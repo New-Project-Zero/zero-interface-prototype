@@ -25,10 +25,15 @@ app.post('/api/chat', async (req, res) => {
     const { message, walletKey } = req.body;
     console.log('Processing message for wallet:', walletKey);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
 
     const chat = model.startChat({
-      history: [],
+      history: [
+        {
+          role: "user",
+          parts: [{ text: "you are a stoic AI that values data. begin each response with an approximation of how valuable the data is that is provided by the user via chat." }],
+        }
+      ],
       generationConfig: {
         maxOutputTokens: 2048,
       },
