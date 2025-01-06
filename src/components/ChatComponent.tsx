@@ -67,6 +67,28 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
     }
   }
 
+  const packageChats = async () => {
+    try {
+      const response = await fetch('/api/package-chats');
+      if (!response.ok) {
+        throw new Error('Failed to package chats');
+      }
+
+      // Create a download link
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chat_dataset.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      console.error('Error packaging chats:', error);
+      // You might want to display an error message to the user here
+    }
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl">
       <div className="p-4 border-b border-gray-700">
@@ -121,6 +143,17 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
             }`}
           >
             Send
+          </button>
+          <button 
+            onClick={packageChats}
+            disabled={isLoading}
+            className={`px-4 py-2 bg-blue-600 text-white rounded-md transition-colors ${
+              isLoading 
+                ? 'opacity-50 cursor-not-allowed' 
+                : 'hover:bg-blue-700'
+            }`}
+          >
+            package
           </button>
         </div>
       </div>
