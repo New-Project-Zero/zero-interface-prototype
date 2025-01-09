@@ -2,7 +2,7 @@ import express from 'express';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import { ChatVertexAI } from "@langchain/google-vertexai";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessageChunk, HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 dotenv.config();
 
@@ -49,19 +49,22 @@ app.post('/api/chat', async (req, res) => {
     console.log('Processing message for wallet:', walletKey);
 
     console.log("messages = ", message);
+  
+    let model_response = '';
 
-    const model_response = await model.invoke([message]);
-
-    console.log(model_response.content);
+    for await (const chunk of await model.stream(message)) {
+    console.log(chunk.content);
+    model_response += chunk.content;
+    }
 
     await chatCollection.insertOne({
       walletKey: walletKey,
       message: message,
-      response: model_response.content,
+      response: model_response,
       timestamp: new Date()
     });
 
-    res.json({ response: model_response.content });
+    res.json({ response: model_response });
   } catch (error) {
     console.error('Chat API Error:', error);
     res.status(500).json({
