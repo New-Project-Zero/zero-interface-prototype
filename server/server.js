@@ -9,13 +9,19 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-const apiKey = process.env.VITE_GEMINI_API_KEY;
+const apiKey = process.env.GOOGLE_API_KEY; // Changed from VITE_GEMINI_API_KEY
 if (!apiKey) {
   console.error('GOOGLE_API_KEY is not set in environment variables');
   process.exit(1);
 }
 
 app.use(express.json());
+
+const model = new ChatVertexAI({ model: 'gemini-1.5-flash', temperature: 0 });
+
+const sys_prompt = new SystemMessage({
+  content: "you are a stoic AI that values data. begin each response with an approximation of how valuable the data is that is provided by the user via chat."
+});
 
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
@@ -37,23 +43,25 @@ async function connectToDatabase() {
 const chatCollection = await connectToDatabase();
 
 app.post('/api/chat', async (req, res) => {
+
   try {
     const { message, walletKey } = req.body;
     console.log('Processing message for wallet:', walletKey);
 
-    const model = new ChatVertexAI({ model: 'gemini-1.5-flash-8b', temperature: 0 });
+    console.log("messages = ", message);
 
-    const text = model.invoke([
-        new SystemMessage("you are a stoic AI that values data. begin each response with an approximation of how valuable the data is that is provided by the user via chat."),]);
+    const model_response = await model.invoke([message]);
+
+    console.log(model_response.content);
 
     await chatCollection.insertOne({
       walletKey: walletKey,
       message: message,
-      response: response,
+      response: model_response.content,
       timestamp: new Date()
     });
 
-    res.json({ response: response });
+    res.json({ response: model_response.content });
   } catch (error) {
     console.error('Chat API Error:', error);
     res.status(500).json({
@@ -66,4 +74,3 @@ app.post('/api/chat', async (req, res) => {
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
-
