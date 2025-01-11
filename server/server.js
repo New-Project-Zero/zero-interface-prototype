@@ -1,32 +1,66 @@
 import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { MongoClient } from 'mongodb';
-import fs from 'fs';
+import dotenv from 'dotenv';
+import { VertexAI } from "@langchain/google-vertexai";
+import { ChatPromptTemplate, 
+  MessagesPlaceholder 
+} from "@langchain/core/prompts";
+import { AgentExecutor } from "langchain/agents";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { RunnableSequence } from "@langchain/core/runnables";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import {
+  START,
+  END,
+  MessagesAnnotation,
+  StateGraph,
+  MemorySaver,
+} from "@langchain/langgraph";
+import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const config = { configurable: { thread_id: uuidv4() } };
 
-// Ensure API key is set
-const apiKey = process.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('VITE_GEMINI_API_KEY is not set in environment variables');
-  process.exit(1);
-}
-
-const genAI = new GoogleGenerativeAI(apiKey);
-
-app.use(cors());
 app.use(express.json());
 
-// MongoDB connection setup
-const uri = 'mongodb://localhost:27017'; // Replace with your MongoDB connection string
+const llm = new VertexAI({
+  model: 'gemini-1.5-flash',
+  temperature: 0
+});
+
+/*
+// Create prompt template
+const promptTemplate = ChatPromptTemplate.fromMessages([
+  ["system", "You are a stoic AI that values data. Begin each response with an approximation of how valuable the data is that is provided by the user via chat."],
+  new MessagesPlaceholder("chat_history"),
+  ["human", "{input}"]
+]);
+*/
+
+/*const chain = RunnableSequence.from([
+  promptTemplate,
+  llm,
+  new StringOutputParser(),
+])*/
+
+/*const agent = RunnableSequence.from([
+  prompt,
+  llm,
+  (output) => {
+    return {
+      response: output,
+      timestamp: new Date()
+    };
+  }
+]);*/
+
+const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
-const dbName = 'chatstorage'; // Replace with your preferred database name
-const collectionName = 'chats'; // Replace with your preferred collection name
+const dbName = 'chatstorage';
+const collectionName = 'chats';
 
 async function connectToDatabase() {
   try {
@@ -40,40 +74,58 @@ async function connectToDatabase() {
   }
 }
 
-const chatCollection = await connectToDatabase(); // Connect to the database
+/*
+//db connection
+const chatCollection = await connectToDatabase();
+*/
+//define call model function
+const callModel = async (state) => {
+  const response = await llm.invoke(state.messages);
+  return {messages: response};
+};
+
+//new graph
+const workflow = new StateGraph(MessagesAnnotation)
+  .addNode("model", callModel)
+  .addEdge(START, "model")
+  .addEdge("model", END);
+
+//add mem
+const memory = new MemorySaver();
+const chatApp = workflow.compile({ checkpointer: memory});
 
 app.post('/api/chat', async (req, res) => {
+
   try {
     const { message, walletKey } = req.body;
     console.log('Processing message for wallet:', walletKey);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
+    console.log("user message = ", message);
+  
+    const input = [
+    {
+      role: "user",
+      content: message,
+    },
+  ];
 
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: "you are a stoic AI that values data. begin each response with an approximation of how valuable the data is that is provided by the user via chat." }],
-        }
-      ],
-      generationConfig: {
-        maxOutputTokens: 2048,
-      },
-    });
+    // Execute the chatapp
+    const result = await chatApp.invoke({ messages: input }, config);
 
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    const text = response.text();
+    console.log(result.messages[result.messages.length - 1]);
 
-    // Save the chat to MongoDB
-    await chatCollection.insertOne({
+    //console.log(model_response);
+   /* await chatCollection.insertOne({
       walletKey: walletKey,
       message: message,
-      response: text,
+      response: model_response,
       timestamp: new Date()
+    });*/
+
+    res.json({
+      response: result.messages[result.messages.length - 1].content // Frontend expects response as a simple string
     });
 
-    res.json({ response: text });
   } catch (error) {
     console.error('Chat API Error:', error);
     res.status(500).json({
@@ -83,34 +135,8 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-app.get('/api/package-chats', async (req, res) => {
-  try {
-    const chats = await chatCollection.find({}).toArray();
-    console.log(chats);
-
-    // Construct CSV content
-    let csvData = 'input,output\n'; // Add header row
-    chats.forEach(chat => {
-      csvData += `"${chat.message.replace(/"/g, '""')}","${chat.response.replace(/"/g, '""')}"\n`;
-    });
-
-    fs.writeFileSync('chat_dataset.csv', csvData);
-
-    console.log('Chat dataset packaged successfully!');
-    res.download('chat_dataset.csv', 'chat_dataset.csv', (err) => {
-      if (err) {
-        console.error('Error downloading file:', err);
-        res.status(500).json({ error: 'Failed to download chat dataset' });
-      } else {
-        fs.unlinkSync('chat_dataset.csv'); // Delete the file after download
-      }
-    });
-  } catch (error) {
-    console.error('Error packaging chat dataset:', error);
-    res.status(500).json({ error: 'Failed to package chat dataset' });
-  }
-});
-
 app.listen(port, () => {
+  //chatApp.invoke(prompt);
+  //console.log(`llm invoked with prompt: ${prompt.toString()}`);
   console.log(`Server is running on port ${port}`);
 });
