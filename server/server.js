@@ -2,56 +2,51 @@ import express from 'express';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import { VertexAI } from "@langchain/google-vertexai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { ChatPromptTemplate, 
+  MessagesPlaceholder 
+} from "@langchain/core/prompts";
 import { AgentExecutor } from "langchain/agents";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
-
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import {
+  START,
+  END,
+  MessagesAnnotation,
+  StateGraph,
+  MemorySaver,
+} from "@langchain/langgraph";
+import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
-
-/*const apiKey = process.env.GOOGLE_API_KEY; // Changed from VITE_GEMINI_API_KEY
-if (!apiKey) {
-  console.error('GOOGLE_API_KEY is not set in environment variables');
-  process.exit(1);
-}*/
+const config = { configurable: { thread_id: uuidv4() } };
 
 app.use(express.json());
 
 const llm = new VertexAI({
   model: 'gemini-1.5-flash',
-  temperature: 0.5,
-  streaming: false,
-  maxOutputTokens: 2048
-}).pipe(new StringOutputParser());
+  temperature: 0
+});
 
-const magicTool = tool(
-  async ({ input }) => {
-    return `${input + 2}`;
-  },
-  {
-    name: "magic_function",
-    description: "Applies a magic function to an input.",
-    schema: z.object({
-      input: z.number(),
-    }),
-  }
-);
-
-// Create a simpler chat chain instead of an agent
-const prompt = ChatPromptTemplate.fromMessages([
+/*
+// Create prompt template
+const promptTemplate = ChatPromptTemplate.fromMessages([
   ["system", "You are a stoic AI that values data. Begin each response with an approximation of how valuable the data is that is provided by the user via chat."],
+  new MessagesPlaceholder("chat_history"),
   ["human", "{input}"]
 ]);
+*/
 
-const tools = [magicTool];
+/*const chain = RunnableSequence.from([
+  promptTemplate,
+  llm,
+  new StringOutputParser(),
+])*/
 
-const agent = RunnableSequence.from([
+/*const agent = RunnableSequence.from([
   prompt,
   llm,
   (output) => {
@@ -60,7 +55,7 @@ const agent = RunnableSequence.from([
       timestamp: new Date()
     };
   }
-]);
+]);*/
 
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
@@ -79,7 +74,25 @@ async function connectToDatabase() {
   }
 }
 
+/*
+//db connection
 const chatCollection = await connectToDatabase();
+*/
+//define call model function
+const callModel = async (state) => {
+  const response = await llm.invoke(state.messages);
+  return {messages: response};
+};
+
+//new graph
+const workflow = new StateGraph(MessagesAnnotation)
+  .addNode("model", callModel)
+  .addEdge(START, "model")
+  .addEdge("model", END);
+
+//add mem
+const memory = new MemorySaver();
+const chatApp = workflow.compile({ checkpointer: memory});
 
 app.post('/api/chat', async (req, res) => {
 
@@ -87,14 +100,19 @@ app.post('/api/chat', async (req, res) => {
     const { message, walletKey } = req.body;
     console.log('Processing message for wallet:', walletKey);
 
-    console.log("messages = ", message);
+    console.log("user message = ", message);
   
-    // Execute the agent
-    const result = await agent.invoke({
-      input: message,
-    });
+    const input = [
+    {
+      role: "user",
+      content: message,
+    },
+  ];
 
-    console.log("response = ", result);
+    // Execute the chatapp
+    const result = await chatApp.invoke({ messages: input }, config);
+
+    console.log(result.messages[result.messages.length - 1]);
 
     //console.log(model_response);
    /* await chatCollection.insertOne({
@@ -105,7 +123,7 @@ app.post('/api/chat', async (req, res) => {
     });*/
 
     res.json({
-      response: result.response  // Frontend expects response as a simple string
+      response: result.messages[result.messages.length - 1].content // Frontend expects response as a simple string
     });
 
   } catch (error) {
@@ -118,5 +136,7 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.listen(port, () => {
+  //chatApp.invoke(prompt);
+  //console.log(`llm invoked with prompt: ${prompt.toString()}`);
   console.log(`Server is running on port ${port}`);
 });
