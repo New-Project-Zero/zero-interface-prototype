@@ -1,7 +1,7 @@
 import express from 'express';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatVertexAI } from "@langchain/google-vertexai";
 import { ChatPromptTemplate, 
   MessagesPlaceholder 
 } from "@langchain/core/prompts";
@@ -9,6 +9,7 @@ import { AgentExecutor } from "langchain/agents";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import { z } from 'zod';
 import {
@@ -26,54 +27,69 @@ const app = express();
 const port = process.env.PORT || 3001;
 const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
+const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
 
 app.use(express.json());
 
-/*
-const tokenInfoGetter = tool({
-  name: "get token info",
-  description: "Call to Helius API to retrieve token info",
-  schema: z.object({
-    contractAddress: z.string().describe("Solana CA to look up"),
-  }),
-  // You'll need to add the actual function to call the Helius API here
-  async execute(input) { 
-    // 1. Extract contractAddress from input
-    const { contractAddress } = input;
+const tokenInfoGetter = tool( async (input) => {
+  // 1. Extract contractAddress from input
+  const { contractAddress } = input;
 
-    // 2. Construct the Helius API URL
-    const apiUrl = `https://mainnet.helius-rpc.com/?api-key=${yourApiKey}`; // Replace with your actual API key
+  // 2. Construct the Helius API URL
+  const apiUrl = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`; // Replace with your actual API key
 
-    // 3. Make the API call (using fetch or Axios)
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  // 3. Make the API call (using fetch or Axios)
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "text",
+      method: "getTokenAccounts", // Or another relevant method
+      params: {
+        mint: contractAddress, // Assuming you're looking up by mint address
       },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "helius-test",
-        method: "getTokenAccounts", // Or another relevant method
-        params: {
-          mint: contractAddress, // Assuming you're looking up by mint address
-        },
-      }),
-    });
+    }),
+  });
 
-    // 4. Parse the response
-    const data = await response.json();
+  // 4. Parse the response
+  const data = await response.json();
 
-    // 5. Return the relevant token information
-    return data.result; // Or extract specific fields from data.result
-  }
-});
-*/
+  // 5. Return the relevant token information
+  return data.result; // Or extract specific fields from data.result
+}, {
+  name: "getTokenInfo",
+  description: "Call to Helius API to retrieve token info"
+}, 
+z.object({
+  contractAddress: z.string().describe("Solana CA to look up"),
+}));
 
-const llm = new ChatGoogleGenerativeAI({
-  model: 'gemini-1.5-flash-8b',
+const llm = new ChatVertexAI({
+  model: 'gemini-pro',
   temperature: 0,
-  apiKey: GOOGLE_API_KEY,
+  //apiKey: GOOGLE_API_KEY,
 });
+
+const llmWithTools = llm.bindTools(
+  [tokenInfoGetter],
+  {
+  stop: ["\n"],
+  }
+  );
+
+const toolNodeForGraph = new ToolNode([tokenInfoGetter]);
+
+const shouldContinue = (state) => {
+  const { messages } = state;
+  const lastMessage = messages[messages.length - 1];
+  if ("tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls?.length) {
+    return "tools";
+  }
+  return "__end__";
+}
 
 /*const chain = RunnableSequence.from([
   promptTemplate,
@@ -117,25 +133,30 @@ const chatCollection = await connectToDatabase();
 // append sys prompt
 const systemPrompt = {
   role: "system",
-  content: "You are a stoic AI that answers technically and to the point."
+  content: "You are a stoic AI that answers technically and to the point. You will be given a mint contract address for a solana blockchain token. You will use the tool to get as much info as possible about that token and return it in a nicely formatted manner."
 };
 
 //define call model function
 const callModel = async (state) => {
+  console.log("calling model");
   const messagesWithSysPrompt = [systemPrompt, ...state.messages];
-  const response = await llm.invoke(messagesWithSysPrompt);
+  console.log("getting response");
+  const response = await llmWithTools.invoke(messagesWithSysPrompt);
+  console.log("response = ", response);
   return {messages: response};
 };
 
 //new graph
 const workflow = new StateGraph(MessagesAnnotation)
-  .addNode("model", callModel)
-  .addEdge(START, "model")
-  .addEdge("model", END);
+  .addNode("agent", callModel)
+  .addNode("tools", toolNodeForGraph)
+  .addEdge("__start__", "agent")
+  .addConditionalEdges("agent", shouldContinue)
+  .addEdge("tools", "agent")
 
 //add mem
 const memory = new MemorySaver();
-const chatApp = workflow.compile({ checkpointer: memory});
+const chatApp = workflow.compile({ checkpointer: memory });
 
 app.post('/api/chat', async (req, res) => {
 
@@ -153,9 +174,10 @@ app.post('/api/chat', async (req, res) => {
   ];
 
     // Execute the chatapp
+    console.log("invoking...");
     const result = await chatApp.invoke({ messages: input }, config);
 
-    console.log(result.messages[result.messages.length - 1]);
+    console.log(result.content);
 
     //console.log(model_response);
    /* await chatCollection.insertOne({
