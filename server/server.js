@@ -20,6 +20,7 @@ import {
   MemorySaver,
 } from "@langchain/langgraph";
 import { v4 as uuidv4 } from "uuid";
+import { tavily } from '@tavily/core';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ const port = process.env.PORT || 3001;
 const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
 const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 
 app.use(express.json());
 
@@ -67,20 +69,40 @@ z.object({
   contractAddress: z.string().describe("Solana CA to look up"),
 }));
 
+//consttruct tavily tool
+const tvly = tavily({ apiKey: TAVILY_API_KEY });
+
+const tavilyTool = tool(async (input) => {
+
+  const response = (await tvly.search(input)).results;
+
+  console.log("tavily response: " + response)
+
+  return response;
+},
+{
+  name: "tavilySearch",
+  description: 'get info from web search',
+  schema: z.object({
+    userQuery: z.string().describe("information to retrieve."),
+  }),
+});
+
 const llm = new ChatVertexAI({
   model: 'gemini-pro',
   temperature: 0,
+  logprobs: true,
   //apiKey: GOOGLE_API_KEY,
 });
 
 const llmWithTools = llm.bindTools(
-  [tokenInfoGetter],
+  [tokenInfoGetter, tavilyTool],
   {
   stop: ["\n"],
   }
   );
 
-const toolNodeForGraph = new ToolNode([tokenInfoGetter]);
+const toolNodeForGraph = new ToolNode([tokenInfoGetter, tavilyTool]);
 
 const shouldContinue = (state) => {
   const { messages } = state;
@@ -133,7 +155,7 @@ const chatCollection = await connectToDatabase();
 // append sys prompt
 const systemPrompt = {
   role: "system",
-  content: "You are a stoic AI that answers technically and to the point. You will be given a mint contract address for a solana blockchain token. You will use the tool to get as much info as possible about that token and return it in a nicely formatted manner."
+  content: "You are a stoic AI that answers technically and to the point. You will be given a mint contract address for a solana blockchain token. You will use the tool to get as much info as possible about that token and return it in a nicely formatted manner. If you are asked about something not related to cryptocurrency then you will use the tavily search tool to recover some relevant information and present it to the user."
 };
 
 //define call model function
@@ -142,7 +164,7 @@ const callModel = async (state) => {
   const messagesWithSysPrompt = [systemPrompt, ...state.messages];
   console.log("getting response");
   const response = await llmWithTools.invoke(messagesWithSysPrompt);
-  console.log("response = ", response);
+  //console.log("response = ", response);
   return {messages: response};
 };
 
@@ -177,7 +199,7 @@ app.post('/api/chat', async (req, res) => {
     console.log("invoking...");
     const result = await chatApp.invoke({ messages: input }, config);
 
-    console.log(result.content);
+    //console.log(result.content);
 
     //console.log(model_response);
    /* await chatCollection.insertOne({
