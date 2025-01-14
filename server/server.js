@@ -73,14 +73,15 @@ z.object({
 const tvly = tavily({ apiKey: TAVILY_API_KEY });
 
 const tavilyTool = tool(async (input) => {
-
-  const response = (await tvly.search(input)).results;
-
-  console.log("tavily response: " + response)
-
-  return response;
-},
-{
+  try {
+    const response = (await tvly.search(input)).results;
+    console.log("tavily response:", response); // Changed to comma for better formatting
+    return response;
+  } catch (error) {
+    console.error("Error in tavilySearch tool:", error); 
+    return "Error: Could not retrieve information."; // Or handle the error differently
+  }
+}, {
   name: "tavilySearch",
   description: 'get info from web search',
   schema: z.object({
