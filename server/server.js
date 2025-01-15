@@ -20,7 +20,9 @@ import {
   MemorySaver,
 } from "@langchain/langgraph";
 import { v4 as uuidv4 } from "uuid";
-import { tavily } from '@tavily/core';
+//import { tavily } from '@tavily/core';
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+//import { GoogleCustomSearch } from "langchain/tools";
 
 dotenv.config();
 
@@ -70,11 +72,12 @@ z.object({
 }));
 
 //consttruct tavily tool
-const tvly = tavily({ apiKey: TAVILY_API_KEY });
+//const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
 
 const tavilyTool = tool(async (input) => {
+  const response = new TavilySearchResults({ maxResults: 2, apiKey: TAVILY_API_KEY});
   try {
-    const response = (await tvly.search(input)).results;
+    response.invoke({input: input})
     console.log("tavily response:", response); // Changed to comma for better formatting
     return response;
   } catch (error) {
@@ -99,6 +102,7 @@ const llm = new ChatVertexAI({
 const llmWithTools = llm.bindTools(
   [tokenInfoGetter, tavilyTool],
   {
+  tool_choice: "auto",
   stop: ["\n"],
   }
   );
