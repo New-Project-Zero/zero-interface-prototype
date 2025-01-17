@@ -10,7 +10,7 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { tool } from "@langchain/core/tools";
+import { DynamicTool } from "@langchain/core/tools";
 import { z } from 'zod';
 import {
   START,
@@ -21,8 +21,11 @@ import {
 } from "@langchain/langgraph";
 import { v4 as uuidv4 } from "uuid";
 //import { tavily } from '@tavily/core';
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 //import { GoogleCustomSearch } from "langchain/tools";
+import { TavilySearchAPIRetriever } from "@langchain/community/retrievers/tavily_search_api";
+
+
+
 
 dotenv.config();
 
@@ -30,19 +33,19 @@ const app = express();
 const port = process.env.PORT || 3001;
 const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
-const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+const VITE_HELLOMOON_API_KEY = process.env.VITE_VITE_HELLOMOON_API_KEY;
 const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 
 app.use(express.json());
 
-const tokenInfoGetter = tool( async (input) => {
-  // 1. Extract contractAddress from input
+/*const tokenInfoGetter = tool( async (input) => {
+  // Extract contractAddress from input
   const { contractAddress } = input;
 
-  // 2. Construct the Helius API URL
-  const apiUrl = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`; // Replace with your actual API key
+  // HELLOMOON API URL
+  const apiUrl = `https://rpc.hellomoon.io/${VITE_HELLOMOON_API_KEY}`; 
 
-  // 3. Make the API call (using fetch or Axios)
+  // api call
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
@@ -51,45 +54,38 @@ const tokenInfoGetter = tool( async (input) => {
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: "text",
-      method: "getTokenAccounts", // Or another relevant method
+      method: "getTokenAccounts", 
       params: {
-        mint: contractAddress, // Assuming you're looking up by mint address
+        mint: contractAddress, // looking up by mint address
       },
     }),
   });
 
-  // 4. Parse the response
+  // Parse response
   const data = await response.json();
 
-  // 5. Return the relevant token information
-  return data.result; // Or extract specific fields from data.result
+  //Return token information
+  return data.result; 
 }, {
   name: "getTokenInfo",
   description: "Call to Helius API to retrieve token info"
 }, 
 z.object({
   contractAddress: z.string().describe("Solana CA to look up"),
-}));
+}));*/
 
 //consttruct tavily tool
 //const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
 
-const tavilyTool = tool(async (input) => {
-  const response = new TavilySearchResults({ maxResults: 2, apiKey: TAVILY_API_KEY});
-  try {
-    response.invoke({input: input})
-    console.log("tavily response:", response); // Changed to comma for better formatting
-    return response;
-  } catch (error) {
-    console.error("Error in tavilySearch tool:", error); 
-    return "Error: Could not retrieve information."; // Or handle the error differently
-  }
-}, {
-  name: "tavilySearch",
-  description: 'get info from web search',
-  schema: z.object({
-    userQuery: z.string().describe("information to retrieve."),
-  }),
+const tavilyTool = new DynamicTool({
+  name: "web-search-tool",
+  description: "Tool for getting the latest information from the web",
+  func: async (searchQuery, runManager) => {
+    const retriever = new TavilySearchAPIRetriever();
+    const docs = await retriever.invoke(searchQuery, runManager?.getChild());
+    console.log(docs.toString);
+    return docs.map((doc) => doc.pageContent).join("\n-----\n");
+  },
 });
 
 const llm = new ChatVertexAI({
@@ -100,14 +96,14 @@ const llm = new ChatVertexAI({
 });
 
 const llmWithTools = llm.bindTools(
-  [tokenInfoGetter, tavilyTool],
+  [tavilyTool],
   {
   tool_choice: "auto",
   stop: ["\n"],
   }
   );
 
-const toolNodeForGraph = new ToolNode([tokenInfoGetter, tavilyTool]);
+const toolNodeForGraph = new ToolNode([ tavilyTool]);
 
 const shouldContinue = (state) => {
   const { messages } = state;
@@ -169,7 +165,7 @@ const callModel = async (state) => {
   const messagesWithSysPrompt = [systemPrompt, ...state.messages];
   console.log("getting response");
   const response = await llmWithTools.invoke(messagesWithSysPrompt);
-  //console.log("response = ", response);
+  console.log("response = ", response);
   return {messages: response};
 };
 
