@@ -1,7 +1,7 @@
 import express from 'express';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
-import { VertexAI } from "@langchain/google-vertexai";
+import { ChatVertexAI } from "@langchain/google-vertexai";
 import { ChatPromptTemplate, 
   MessagesPlaceholder 
 } from "@langchain/core/prompts";
@@ -9,6 +9,9 @@ import { AgentExecutor } from "langchain/agents";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { tool } from "@langchain/core/tools";
+import { z } from 'zod';
 import {
   START,
   END,
@@ -17,28 +20,103 @@ import {
   MemorySaver,
 } from "@langchain/langgraph";
 import { v4 as uuidv4 } from "uuid";
+//import { tavily } from '@tavily/core';
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+//import { GoogleCustomSearch } from "langchain/tools";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
 const config = { configurable: { thread_id: uuidv4() } };
+const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
+const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 
 app.use(express.json());
 
-const llm = new VertexAI({
-  model: 'gemini-1.5-flash',
-  temperature: 0
+const tokenInfoGetter = tool( async (input) => {
+  // 1. Extract contractAddress from input
+  const { contractAddress } = input;
+
+  // 2. Construct the Helius API URL
+  const apiUrl = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`; // Replace with your actual API key
+
+  // 3. Make the API call (using fetch or Axios)
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "text",
+      method: "getTokenAccounts", // Or another relevant method
+      params: {
+        mint: contractAddress, // Assuming you're looking up by mint address
+      },
+    }),
+  });
+
+  // 4. Parse the response
+  const data = await response.json();
+
+  // 5. Return the relevant token information
+  return data.result; // Or extract specific fields from data.result
+}, {
+  name: "getTokenInfo",
+  description: "Call to Helius API to retrieve token info"
+}, 
+z.object({
+  contractAddress: z.string().describe("Solana CA to look up"),
+}));
+
+//consttruct tavily tool
+//const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
+
+const tavilyTool = tool(async (input) => {
+  const response = new TavilySearchResults({ maxResults: 2, apiKey: TAVILY_API_KEY});
+  try {
+    response.invoke({input: input})
+    console.log("tavily response:", response); // Changed to comma for better formatting
+    return response;
+  } catch (error) {
+    console.error("Error in tavilySearch tool:", error); 
+    return "Error: Could not retrieve information."; // Or handle the error differently
+  }
+}, {
+  name: "tavilySearch",
+  description: 'get info from web search',
+  schema: z.object({
+    userQuery: z.string().describe("information to retrieve."),
+  }),
 });
 
-/*
-// Create prompt template
-const promptTemplate = ChatPromptTemplate.fromMessages([
-  ["system", "You are a stoic AI that values data. Begin each response with an approximation of how valuable the data is that is provided by the user via chat."],
-  new MessagesPlaceholder("chat_history"),
-  ["human", "{input}"]
-]);
-*/
+const llm = new ChatVertexAI({
+  model: 'gemini-pro',
+  temperature: 0,
+  logprobs: true,
+  //apiKey: GOOGLE_API_KEY,
+});
+
+const llmWithTools = llm.bindTools(
+  [tokenInfoGetter, tavilyTool],
+  {
+  tool_choice: "auto",
+  stop: ["\n"],
+  }
+  );
+
+const toolNodeForGraph = new ToolNode([tokenInfoGetter, tavilyTool]);
+
+const shouldContinue = (state) => {
+  const { messages } = state;
+  const lastMessage = messages[messages.length - 1];
+  if ("tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls?.length) {
+    return "tools";
+  }
+  return "__end__";
+}
 
 /*const chain = RunnableSequence.from([
   promptTemplate,
@@ -78,21 +156,34 @@ async function connectToDatabase() {
 //db connection
 const chatCollection = await connectToDatabase();
 */
+
+// append sys prompt
+const systemPrompt = {
+  role: "system",
+  content: "You are a stoic AI that answers technically and to the point. You will be given a mint contract address for a solana blockchain token. You will use the tool to get as much info as possible about that token and return it in a nicely formatted manner. If you are asked about something not related to cryptocurrency then you will use the tavily search tool to recover some relevant information and present it to the user."
+};
+
 //define call model function
 const callModel = async (state) => {
-  const response = await llm.invoke(state.messages);
+  console.log("calling model");
+  const messagesWithSysPrompt = [systemPrompt, ...state.messages];
+  console.log("getting response");
+  const response = await llmWithTools.invoke(messagesWithSysPrompt);
+  //console.log("response = ", response);
   return {messages: response};
 };
 
 //new graph
 const workflow = new StateGraph(MessagesAnnotation)
-  .addNode("model", callModel)
-  .addEdge(START, "model")
-  .addEdge("model", END);
+  .addNode("agent", callModel)
+  .addNode("tools", toolNodeForGraph)
+  .addEdge("__start__", "agent")
+  .addConditionalEdges("agent", shouldContinue)
+  .addEdge("tools", "agent")
 
 //add mem
 const memory = new MemorySaver();
-const chatApp = workflow.compile({ checkpointer: memory});
+const chatApp = workflow.compile({ checkpointer: memory });
 
 app.post('/api/chat', async (req, res) => {
 
@@ -110,9 +201,10 @@ app.post('/api/chat', async (req, res) => {
   ];
 
     // Execute the chatapp
+    console.log("invoking...");
     const result = await chatApp.invoke({ messages: input }, config);
 
-    console.log(result.messages[result.messages.length - 1]);
+    //console.log(result.content);
 
     //console.log(model_response);
    /* await chatCollection.insertOne({
