@@ -37,7 +37,7 @@ export function AgentStatus({ walletKey }: AgentStatusProps) {
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 mt-4 mb-4">
-      <h3 className="text-xl font-semibold text-white mb-2">Your AI Agent</h3>
+      <h3 className="text-xl font-semibold text-white mb-2">Your Homunculus</h3>
       <p className="text-gray-300">Model: {agentInfo.model}</p>
       <p className="text-gray-300">Tools: {agentInfo.tools.join(', ')}</p>
       <p className="text-gray-300">Memory: {agentInfo.memory}</p>

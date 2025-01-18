@@ -9,10 +9,10 @@ interface Message {
 
 interface ChatComponentProps {
   walletKey: string
-  agentSpawned: boolean
+  //agentSpawned: boolean
 }
 
-export function ChatComponent({ walletKey, agentSpawned }: ChatComponentProps) {
+export function ChatComponent({ walletKey }: ChatComponentProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -38,7 +38,7 @@ export function ChatComponent({ walletKey, agentSpawned }: ChatComponentProps) {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, walletKey, useAgent: agentSpawned })
+        body: JSON.stringify({ message: input, walletKey})
       })
 
       const data = await response.json()
@@ -71,7 +71,7 @@ export function ChatComponent({ walletKey, agentSpawned }: ChatComponentProps) {
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl">
       <div className="p-4 border-b border-gray-700">
-        <h2 className="text-xl font-semibold text-white">Chat with {agentSpawned ? 'AI Agent' : 'Homunculus'}</h2>
+        <h2 className="text-xl font-semibold text-white text-center">🌱Chat with the Homunculus🌱 </h2>
       </div>
       <div className="p-4">
         <div className="h-[60vh] overflow-y-auto mb-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">

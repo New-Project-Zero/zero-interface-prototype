@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 
 interface PhantomWalletButtonProps {
   onConnect: (publicKey: string) => void
-  onSpawnAgent: () => void
 }
 
-export function PhantomWalletButton({ onConnect, onSpawnAgent }: PhantomWalletButtonProps) {
+export function PhantomWalletButton({ onConnect }: PhantomWalletButtonProps) {
   const [walletKey, setWalletKey] = useState<string | null>(null)
   const [agentSpawned, setAgentSpawned] = useState(false)
 
@@ -24,10 +23,9 @@ export function PhantomWalletButton({ onConnect, onSpawnAgent }: PhantomWalletBu
     }
   };
 
-  const handleSpawnAgent = async () => {
-    await onSpawnAgent();
+  /*const handleSpawnAgent = async () => {
     setAgentSpawned(true);
-  }
+  }*/
 
   useEffect(() => {
     const handleAccountsChanged = (accounts: string[]) => {
@@ -52,14 +50,6 @@ export function PhantomWalletButton({ onConnect, onSpawnAgent }: PhantomWalletBu
       >
         {walletKey ? `Connected: ${walletKey.slice(0, 4)}...${walletKey.slice(-4)}` : 'Connect Phantom Wallet'}
       </button>
-      {walletKey && !agentSpawned && (
-        <button
-          onClick={handleSpawnAgent}
-          className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-        >
-          Spawn Agent
-        </button>
-      )}
     </div>
   )
 }

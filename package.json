@@ -19,7 +19,7 @@
     "@langchain/google-genai": "^0.1.6",
     "@langchain/google-vertexai": "^0.1.6",
     "@langchain/langgraph": "^0.2.39",
-    "@solana/web3.js": "2.0.0",
+    "@solana/web3.js": "^1.98.0",
     "@tavily/core": "^0.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

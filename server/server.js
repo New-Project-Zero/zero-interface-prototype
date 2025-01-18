@@ -23,8 +23,7 @@ import { v4 as uuidv4 } from "uuid";
 //import { tavily } from '@tavily/core';
 //import { GoogleCustomSearch } from "langchain/tools";
 import { TavilySearchAPIRetriever } from "@langchain/community/retrievers/tavily_search_api";
-
-
+import { Connection, PublicKey } from '@solana/web3.js';
 
 
 dotenv.config();
@@ -35,6 +34,10 @@ const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
 const VITE_HELLOMOON_API_KEY = process.env.VITE_VITE_HELLOMOON_API_KEY;
 const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
+const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+
+const NEWP_MINT_ADDR = new PublicKey('2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump');
+const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
 
 app.use(express.json());
 
@@ -75,7 +78,7 @@ z.object({
 }));*/
 
 //consttruct tavily tool
-//const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
+const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
 
 const tavilyTool = new DynamicTool({
   name: "web-search-tool",
@@ -220,6 +223,39 @@ app.post('/api/chat', async (req, res) => {
       error: 'Failed to process chat request',
       details: error instanceof Error ? error.message : String(error)
     });
+  }
+});
+
+app.post('/api/check-token', async (req, res) => {
+  try {
+
+    console.log('Request body:', req.body);
+    console.log('Content-Type:', req.headers['content-type']);
+    const { walletKey } = req.body;  // Get publicKey from request body
+
+    if (!walletKey) {
+      return res.status(400).json({ error: 'Public key is required' });
+    }
+
+    console.log('checking with helius');
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      new PublicKey(walletKey),
+      { mint: NEWP_MINT_ADDR }
+    );
+
+    const hasNEWP = tokenAccounts.value.length > 0 && 
+      tokenAccounts.value.some(
+        (account) => account.account.data.parsed.info.tokenAmount.uiAmount > 0
+      );
+
+    return res.json({ hasToken: hasNEWP });
+    //set false for test
+    //return res.json({ hasToken: false });
+
+    
+  } catch (error) {
+    console.error('Error checking NEWP balance:', error);
+    return res.status(500).json({ error: 'Failed to check token balance' });
   }
 });
 

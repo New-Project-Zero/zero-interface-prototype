@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export function ApiKeyTest() {
   const [status, setStatus] = useState<string>('Checking API key...')
