@@ -6,8 +6,8 @@ import { ChatComponent } from './components/ChatComponent'
 export default function App() { 
   const [walletKey, setWalletKey] = useState<string | null>(null)
   //const [agentSpawned, setAgentSpawned] = useState(false)
-  const [hasRequiredToken, setHasRequiredToken] = useState(false); // Add state for token ownership
-  const [showPopup, setShowPopup] = useState(false); // Add state for the popup
+  const [hasRequiredToken, setHasRequiredToken] = useState(false); // state for token ownership
+  const [showPopup, setShowPopup] = useState(false); // state for popup
 
   /*const handleSpawnAgent = async () => {
     if (walletKey && hasRequiredToken) {
@@ -42,15 +42,12 @@ export default function App() {
           });
 
           if (response.ok) {
-            const data = await response.json(); // Parse the response
+            const data = await response.json(); // parse response
             setHasRequiredToken(data.hasToken); // Update token ownership state
             if (!data.hasToken) {
-              setShowPopup(true); // Show the popup if the user doesn't have the token
+              setShowPopup(true); // popup if the user doesn't have newp
             }
-            // Token check successful, maybe update state or show a success message
-            console.log('User has the required token');
           } else {
-            // Token check failed, handle accordingly (e.g., show an error message)
             console.error('User does not have the required token');
           }
         } catch (error) {
@@ -59,8 +56,8 @@ export default function App() {
       }
     };
 
-    checkTokenBalance(); // Call the function
-  }, [walletKey]); // Run this effect whenever walletKey changes
+    checkTokenBalance(); 
+  }, [walletKey]); // run effect whenever walletKey changes
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-900 to-black text-white font-sans p-4">
@@ -75,7 +72,7 @@ export default function App() {
         </>
       )}
 
-        {/* Popup - NEWP holders only */}
+        {/* NEWP holders only popup*/}
         {showPopup && (
           <div className="fixed inset-0 flex items-center justify-center z-50">
             <div className="bg-black bg-opacity-80 p-8 rounded-lg">

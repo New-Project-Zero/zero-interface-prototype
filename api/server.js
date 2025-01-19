@@ -207,9 +207,6 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const { message, walletKey } = req.body;
-    console.log('Processing message for wallet:', walletKey);
-
-    console.log("user message = ", message);
   
     /*
     const input = [
@@ -260,7 +257,6 @@ app.post('/api/check-token', async (req, res) => {
       return res.status(400).json({ error: 'Public key is required' });
     }
 
-    console.log('checking with helius');
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       new PublicKey(walletKey),
       { mint: NEWP_MINT_ADDR }
