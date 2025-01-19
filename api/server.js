@@ -1,34 +1,26 @@
 import express from 'express';
 //import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
-//import { ChatGoogleGenerativeAI } from "@langchain/google-vertexai";
-/*import { ChatPromptTemplate, 
-  MessagesPlaceholder 
-} from "@langchain/core/prompts";
-import { AgentExecutor } from "langchain/agents";
-import { StringOutputParser } from "@langchain/core/output_parsers";
-import { RunnableSequence } from "@langchain/core/runnables";
-*/
 import cors from 'cors';
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
 //import { ToolNode } from "@langchain/langgraph/prebuilt";
-//import { DynamicTool } from "@langchain/core/tools";
-//import { z } from 'zod';
+import { tool } from "@langchain/core/tools";
+import { z } from 'zod';
 import {
   START,
   END,
   MessagesAnnotation,
   StateGraph,
   MemorySaver,
+  Annotation,
+  messagesStateReducer,
 } from "@langchain/langgraph";
 //import { v4 as uuidv4 } from "uuid";
-//import { tavily } from '@tavily/core';
-//import { GoogleCustomSearch } from "langchain/tools";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { Connection, PublicKey } from '@solana/web3.js';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-
+import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
+import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 
 dotenv.config();
 
@@ -47,10 +39,16 @@ const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HEL
 app.use(cors());
 app.use(express.json());
 
-const agentTools = [new TavilySearchResults({ 
+/*const StateAnnotation = Annotation.Root({
+  messages: []>({
+    reducer: messagesStateReducer,
+  }),
+});*/
+
+const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
   apiKey: TAVILY_API_KEY
- })];
+ });
 
 /*const tokenInfoGetter = tool( async (input) => {
   // Extract contractAddress from input
@@ -86,59 +84,11 @@ const agentTools = [new TavilySearchResults({
 }, 
 z.object({
   contractAddress: z.string().describe("Solana CA to look up"),
-}));
+}));*/
 
-//consttruct tavily tool
-const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
+const agentTools = [tavilyTool];
+const toolNode = new ToolNode(agentTools);
 
-const tavilyTool = new DynamicTool({
-  name: "web-search-tool",
-  description: "Tool for getting the latest information from the web",
-  func: async (searchQuery, runManager) => {
-    const retriever = new TavilySearchAPIRetriever();
-    const docs = await retriever.invoke(searchQuery, runManager?.getChild());
-    console.log(docs.toString);
-    return docs.map((doc) => doc.pageContent).join("\n-----\n");
-  },
-});
-*/
-
-/*
-const llmWithTools = llm.bindTools(
-  [tavilyTool],
-  {
-  tool_choice: "auto",
-  stop: ["\n"],
-  }
-  );
-
-const toolNodeForGraph = new ToolNode([ tavilyTool]);
-
-const shouldContinue = (state) => {
-  const { messages } = state;
-  const lastMessage = messages[messages.length - 1];
-  if ("tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls?.length) {
-    return "tools";
-  }
-  return "__end__";
-}
-
-const chain = RunnableSequence.from([
-  promptTemplate,
-  llm,
-  new StringOutputParser(),
-])*/
-
-/*const agent = RunnableSequence.from([
-  prompt,
-  llm,
-  (output) => {
-    return {
-      response: output,
-      timestamp: new Date()
-    };
-  }
-]);*/
 /*
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
@@ -191,17 +141,61 @@ const llm = new ChatGoogleGenerativeAI({
   model: 'gemini-1.5-flash-8b',
   temperature: 0,
   apiKey: GOOGLE_API_KEY,
-});
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+  ], 
+}).bindTools(agentTools);
 
+
+//determine continue or not
+function shouldContinue(state) {
+  const messages = state.messages;
+  const lastMessage = messages[messages.length - 1];
+
+   // If  tool call route to the "tools" node
+   if (lastMessage.tool_calls?.length) {
+    return "tools";
+  }
+  // Otherwise stop (reply to the user)
+  return "__end__";
+}
+
+async function callModel(state) {
+  const response = await llm.invoke(state.messages);
+
+  // We return a list, because this will get added to the existing list
+  return { messages: [response] };
+}
+
+//define graph
+const workflow = new StateGraph(MessagesAnnotation)
+  .addNode("agent", callModel)
+  .addEdge("__start__", "agent") // __start__ for the entrypoint
+  .addNode("tools", toolNode)
+  .addEdge("tools", "agent")
+  .addConditionalEdges("agent", shouldContinue);
 //add mem
 const memory = new MemorySaver();
-//const chatApp = workflow.compile({ checkpointer: memory });
+//compile
+const chatApp = workflow.compile({ checkpointer: memory });
 
+/*
 const agent = createReactAgent({
   llm: llm,
   tools: agentTools,
   checkpointSaver: memory,
-})
+})*/
 
 app.post('/api/chat', async (req, res) => {
 
@@ -218,8 +212,9 @@ app.post('/api/chat', async (req, res) => {
 
     // Execute the chatapp
     console.log("invoking...");
-    const result = await agent.invoke(
-      { messages: [new HumanMessage(message)] },
+    const result = await chatApp.invoke(
+      { messages:
+        [new HumanMessage(message)] },
       { configurable: {thread_id: 42 } },
   );
 

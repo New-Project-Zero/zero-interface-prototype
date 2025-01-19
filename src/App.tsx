@@ -8,6 +8,8 @@ export default function App() {
   //const [agentSpawned, setAgentSpawned] = useState(false)
   const [hasRequiredToken, setHasRequiredToken] = useState(false); // state for token ownership
   const [showPopup, setShowPopup] = useState(false); // state for popup
+  const [showInitialPopup, setShowInitialPopup] = useState(true); // state for initial popup
+
 
   /*const handleSpawnAgent = async () => {
     if (walletKey && hasRequiredToken) {
@@ -60,7 +62,7 @@ export default function App() {
   }, [walletKey]); // run effect whenever walletKey changes
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-900 to-black text-white font-sans p-4">
+    <div className="min-h-screen bg-gradient-to-b from-green-900 to-black text-white font-serif p-4">
       <header className="text-center mb-8">
         <h1 className="text-4xl font-bold">Homunculus Prototype</h1>
       </header>
@@ -71,6 +73,24 @@ export default function App() {
           <ChatComponent walletKey={walletKey} /> {/* Removed agentSpawned prop */}
         </>
       )}
+
+        {/* Initial Popup */}
+        {showInitialPopup && (
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            <div className="bg-black bg-opacity-80 p-8 rounded-lg max-w-md text-center">
+              <h2 className="text-2xl font-bold mb-4">Welcome to Homunculus v0.1</h2>
+              <p className="mb-6">
+                $NEWP holders can connect their wallets and use the Homunculus prototype. This is an early version. Expansion of capabilities will be implemented regularly with many features planned for the future. 
+              </p>
+              <button
+                className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                onClick={() => setShowInitialPopup(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* NEWP holders only popup*/}
         {showPopup && (
