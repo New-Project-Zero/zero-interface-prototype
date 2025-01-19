@@ -1,27 +1,19 @@
 {
     "version": 2,
-    "builds": [
+    "buildCommand": "npm run build",
+    "devCommand": "npm run dev",
+    "outputDirectory": "dist",
+    "framework": "vite",
+    "rewrites": [
       {
-        "src": "/api/server.js",
-        "use": "@vercel/node"
+        "source": "/api/(.*)",
+        "destination": "/api/server.js"
       },
       {
-        "src": "package.json",
-        "use": "@vercel/static-build",
-        "config": {
-          "distDir": "dist"
-        }
-      }
-    ],
-    "routes": [
-      {
-        "src": "/api/(.*)",
-        "dest": "/api/server.js"
-      },
-      {
-        "src": "/(.*)",
-        "dest": "/"
+        "source": "/(.*)",
+        "destination": "/index.html"
       }
     ]
   }
+  
   
