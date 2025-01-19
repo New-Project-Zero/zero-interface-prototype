@@ -1,17 +1,19 @@
 import express from 'express';
-import { MongoClient } from 'mongodb';
+//import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
-import { ChatVertexAI } from "@langchain/google-vertexai";
-import { ChatPromptTemplate, 
+//import { ChatGoogleGenerativeAI } from "@langchain/google-vertexai";
+/*import { ChatPromptTemplate, 
   MessagesPlaceholder 
 } from "@langchain/core/prompts";
 import { AgentExecutor } from "langchain/agents";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RunnableSequence } from "@langchain/core/runnables";
+*/
+import cors from 'cors';
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { DynamicTool } from "@langchain/core/tools";
-import { z } from 'zod';
+//import { ToolNode } from "@langchain/langgraph/prebuilt";
+//import { DynamicTool } from "@langchain/core/tools";
+//import { z } from 'zod';
 import {
   START,
   END,
@@ -19,27 +21,36 @@ import {
   StateGraph,
   MemorySaver,
 } from "@langchain/langgraph";
-import { v4 as uuidv4 } from "uuid";
+//import { v4 as uuidv4 } from "uuid";
 //import { tavily } from '@tavily/core';
 //import { GoogleCustomSearch } from "langchain/tools";
-import { TavilySearchAPIRetriever } from "@langchain/community/retrievers/tavily_search_api";
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { Connection, PublicKey } from '@solana/web3.js';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
 
 dotenv.config();
 
+//const VITE_HELLOMOON_API_KEY = process.env.VITE_VITE_HELLOMOON_API_KEY;
+
 const app = express();
 const port = process.env.PORT || 3001;
-const config = { configurable: { thread_id: uuidv4() } };
+//const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
-const VITE_HELLOMOON_API_KEY = process.env.VITE_VITE_HELLOMOON_API_KEY;
 const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
 
 const NEWP_MINT_ADDR = new PublicKey('2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump');
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
 
+app.use(cors());
 app.use(express.json());
+
+const agentTools = [new TavilySearchResults({ 
+  maxResults: 3,
+  apiKey: TAVILY_API_KEY
+ })];
 
 /*const tokenInfoGetter = tool( async (input) => {
   // Extract contractAddress from input
@@ -75,7 +86,7 @@ app.use(express.json());
 }, 
 z.object({
   contractAddress: z.string().describe("Solana CA to look up"),
-}));*/
+}));
 
 //consttruct tavily tool
 const tvly = tavily({apiKey: `${TAVILY_API_KEY}`});
@@ -90,14 +101,9 @@ const tavilyTool = new DynamicTool({
     return docs.map((doc) => doc.pageContent).join("\n-----\n");
   },
 });
+*/
 
-const llm = new ChatVertexAI({
-  model: 'gemini-pro',
-  temperature: 0,
-  logprobs: true,
-  //apiKey: GOOGLE_API_KEY,
-});
-
+/*
 const llmWithTools = llm.bindTools(
   [tavilyTool],
   {
@@ -117,7 +123,7 @@ const shouldContinue = (state) => {
   return "__end__";
 }
 
-/*const chain = RunnableSequence.from([
+const chain = RunnableSequence.from([
   promptTemplate,
   llm,
   new StringOutputParser(),
@@ -133,7 +139,7 @@ const shouldContinue = (state) => {
     };
   }
 ]);*/
-
+/*
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
 const dbName = 'chatstorage';
@@ -151,10 +157,10 @@ async function connectToDatabase() {
   }
 }
 
-/*
+
 //db connection
 const chatCollection = await connectToDatabase();
-*/
+
 
 // append sys prompt
 const systemPrompt = {
@@ -179,10 +185,23 @@ const workflow = new StateGraph(MessagesAnnotation)
   .addEdge("__start__", "agent")
   .addConditionalEdges("agent", shouldContinue)
   .addEdge("tools", "agent")
+*/
+
+const llm = new ChatGoogleGenerativeAI({
+  model: 'gemini-1.5-flash-8b',
+  temperature: 0,
+  apiKey: GOOGLE_API_KEY,
+});
 
 //add mem
 const memory = new MemorySaver();
-const chatApp = workflow.compile({ checkpointer: memory });
+//const chatApp = workflow.compile({ checkpointer: memory });
+
+const agent = createReactAgent({
+  llm: llm,
+  tools: agentTools,
+  checkpointSaver: memory,
+})
 
 app.post('/api/chat', async (req, res) => {
 
@@ -192,18 +211,22 @@ app.post('/api/chat', async (req, res) => {
 
     console.log("user message = ", message);
   
+    /*
     const input = [
     {
       role: "user",
       content: message,
     },
-  ];
+  ];*/
 
     // Execute the chatapp
     console.log("invoking...");
-    const result = await chatApp.invoke({ messages: input }, config);
+    const result = await agent.invoke(
+      { messages: [new HumanMessage(message)] },
+      { configurable: {thread_id: 42 } },
+  );
 
-    //console.log(result.content);
+    console.log(result.content);
 
     //console.log(model_response);
    /* await chatCollection.insertOne({
@@ -259,8 +282,11 @@ app.post('/api/check-token', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  //chatApp.invoke(prompt);
-  //console.log(`llm invoked with prompt: ${prompt.toString()}`);
-  console.log(`Server is running on port ${port}`);
-});
+// For Vercel  export app
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`)
+  })
+}
+
+export default app
