@@ -68,6 +68,39 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
     }
   }
 
+  useEffect(() => {
+    const fetchInitialMessage = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: "You are a tool equipped llm meant to perform specific tasks. You are to keep your answers terse and pertinent. Very little emotion. Start with the greeting 'Hello I am homunculus. I have the following tools equipped: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools.", walletKey }) // Send initial message
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.details || 'Failed to get response');
+        }
+
+        const botMessage: Message = { role: 'bot', content: data.response };
+        setMessages([botMessage]); 
+      } catch (error) {
+        console.error('Error fetching initial message:', error);
+        const errorMessage: Message = {
+          role: 'error',
+          content: error instanceof Error ? error.message : 'An unexpected error occurred'
+        };
+        setMessages([errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInitialMessage();
+  }, [walletKey]); 
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl">
       <div className="p-4 border-b border-gray-700">

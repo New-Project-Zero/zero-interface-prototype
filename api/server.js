@@ -24,14 +24,13 @@ import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 
 dotenv.config();
 
-//const VITE_HELLOMOON_API_KEY = process.env.VITE_VITE_HELLOMOON_API_KEY;
-
 const app = express();
 const port = process.env.PORT || 3001;
 //const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
 const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+const HELLOMOON_API_KEY = process.env.VITE_HELLOMOON_API_KEY;
 
 const NEWP_MINT_ADDR = new PublicKey('2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump');
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
@@ -47,46 +46,50 @@ app.use(express.json());
 
 const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
-  apiKey: TAVILY_API_KEY
+  apiKey: TAVILY_API_KEY,
  });
 
-/*const tokenInfoGetter = tool( async (input) => {
-  // Extract contractAddress from input
-  const { contractAddress } = input;
-
-  // HELLOMOON API URL
-  const apiUrl = `https://rpc.hellomoon.io/${VITE_HELLOMOON_API_KEY}`; 
-
-  // api call
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "text",
-      method: "getTokenAccounts", 
-      params: {
-        mint: contractAddress, // looking up by mint address
-      },
-    }),
+const walletBalanceCheckerSchema = z.object({
+    wallet: z.string()
   });
 
-  // Parse response
-  const data = await response.json();
+const walletBalanceChecker = tool( async (pubkey) => {
+  
+  //construct json payload
+  const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "getAccountInfo",
+      "params": [
+        pubkey.wallet,
+        {
+          "encoding": "base58"
+        }
+      ]
+    }),
+})
 
-  //Return token information
-  return data.result; 
+const data = await response.json();
+
+  const {result} = data;
+
+console.log(result);
+
+  return result.value.lamports;
+
 }, {
-  name: "getTokenInfo",
-  description: "Call to Helius API to retrieve token info"
-}, 
-z.object({
-  contractAddress: z.string().describe("Solana CA to look up"),
-}));*/
+  name: "balanceChecker",
+  description: "Call to helius API to retrieve lamport balance on a wallet. pubkey number is passed input. returns an integer that represents the number of lamports ",
+  schema: walletBalanceCheckerSchema,
+}
+);
 
-const agentTools = [tavilyTool];
+const agentTools = [tavilyTool, walletBalanceChecker];
 const toolNode = new ToolNode(agentTools);
 
 /*
@@ -156,7 +159,6 @@ const llm = new ChatGoogleGenerativeAI({
     },
   ], 
 }).bindTools(agentTools);
-
 
 //determine continue or not
 function shouldContinue(state) {
