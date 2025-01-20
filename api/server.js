@@ -84,7 +84,7 @@ console.log(result);
 
 }, {
   name: "balanceChecker",
-  description: "Call to helius API to retrieve lamport balance on a wallet. pubkey number is passed input. returns an integer that represents the number of lamports ",
+  description: "Call to helius API to retrieve lamport balance on a wallet. pubkey number is passed input. returns an integer that represents the number of lamports. this is to be displayed to the user appended by -lamports in wallet ",
   schema: walletBalanceCheckerSchema,
 }
 );
