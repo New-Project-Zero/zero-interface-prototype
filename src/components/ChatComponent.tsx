@@ -88,11 +88,6 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
         setMessages([botMessage]); 
       } catch (error) {
         console.error('Error fetching initial message:', error);
-        const errorMessage: Message = {
-          role: 'error',
-          content: error instanceof Error ? error.message : 'An unexpected error occurred'
-        };
-        setMessages([errorMessage]);
       } finally {
         setIsLoading(false);
       }
