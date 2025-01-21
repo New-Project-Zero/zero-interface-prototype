@@ -3,7 +3,6 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { AIMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
-//import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import { z } from 'zod';
 import {
@@ -24,13 +23,16 @@ import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 
 dotenv.config();
 
+const LAMPORTS_PER_SOL = 1_000_000_000;
 const app = express();
 const port = process.env.PORT || 3001;
 //const config = { configurable: { thread_id: uuidv4() } };
 const GOOGLE_API_KEY = process.env.VITE_GOOGLE_API_KEY;
 const TAVILY_API_KEY = process.env.VITE_TAVILY_API_KEY;
 const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
-const HELLOMOON_API_KEY = process.env.VITE_HELLOMOON_API_KEY;
+//const HELLOMOON_API_KEY = process.env.VITE_HELLOMOON_API_KEY;
+//const SOLSCAN_API_KEY = process.env.VITE_SOLSCAN_API_KEY;
+
 
 const NEWP_MINT_ADDR = new PublicKey('2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump');
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
@@ -53,10 +55,16 @@ const walletBalanceCheckerSchema = z.object({
     wallet: z.string()
   });
 
+  //walletInfoTool
 const walletBalanceChecker = tool( async (pubkey) => {
   
-  //construct json payload
-  const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+  const walletInfoStruct = {
+    lamportBalance: 0,
+    SPLtokens: [], //five max
+  };
+
+  //json payload fro SOL balance check
+  const walletLamportBalanceJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
     method: 'POST',
     headers: {
       "Content-Type": "application/json"
@@ -64,27 +72,78 @@ const walletBalanceChecker = tool( async (pubkey) => {
     body: JSON.stringify({
       "jsonrpc": "2.0",
       "id": 1,
-      "method": "getAccountInfo",
+      "method": "getBalance",
       "params": [
         pubkey.wallet,
-        {
-          "encoding": "base58"
-        }
       ]
     }),
 })
+const lamportData = await walletLamportBalanceJSON.json();
+//fill struct
+walletInfoStruct.lamportBalance = lamportData.result.value / LAMPORTS_PER_SOL;
 
-const data = await response.json();
+//request for spl holdings
+const walletSPLTokenHoldings = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+  method: 'POST',
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "getTokenAccounts",
+    "params": {
+        "owner": pubkey.wallet,
+  }
+  }),
+});
+const SPLtokens = await walletSPLTokenHoldings.json();
+console.log("spl holdings json = ", SPLtokens.result.token_accounts);
 
-  const {result} = data;
+// get each token (5 max)
+let tokenCount = 0;
+for (const token of SPLtokens.result.token_accounts) {
+  tokenCount ++;
+  if (tokenCount > 5) {
+    break; // Exit the loop if we've processed 5 tokens
+  }
 
-console.log(result);
+  const mintAddr = token.mint;
+  const amountHeld = token.amount/1_000_000;
+  //const tokenBalanceInWallet = token
+  console.log("mint addr = ", mintAddr);
+  console.log("amount = ", amountHeld);
 
-  return result.value.lamports;
+  //get metadata
+  const splMetaJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": "test",
+      "method": "getAsset",
+      "params": {
+        "id": mintAddr
+      }
+    }),
+});
+const tokenMetaData = await splMetaJSON.json();
+const metaSymbol = tokenMetaData.result.token_info.symbol;
+console.log("meta symbol = ", metaSymbol);
 
+walletInfoStruct.SPLtokens.push({
+  symbol: metaSymbol,
+  mint_address: mintAddr,
+  balance: amountHeld
+})
+}
+
+  return walletInfoStruct;
 }, {
   name: "balanceChecker",
-  description: "this tool calls to helius API to retrieve lamport balance on a wallet. pubkey number is passed input. returns an integer that represents the number of lamports. this is to be displayed to the user appended by [integer] lamports in wallet ",
+  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for each SPL token in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: symbol newline balance newline, mint address. make sure the formnatting is nice.",
   schema: walletBalanceCheckerSchema,
 }
 );
@@ -220,8 +279,6 @@ app.post('/api/chat', async (req, res) => {
       { configurable: {thread_id: 42 } },
   );
 
-    console.log(result.content);
-
     //console.log(model_response);
    /* await chatCollection.insertOne({
       walletKey: walletKey,
@@ -246,13 +303,13 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/check-token', async (req, res) => {
   try {
 
-    console.log('Request body:', req.body);
-    console.log('Content-Type:', req.headers['content-type']);
     const { walletKey } = req.body;  // Get publicKey from request body
 
     if (!walletKey) {
       return res.status(400).json({ error: 'Public key is required' });
     }
+
+    console.log(walletKey);
 
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       new PublicKey(walletKey),

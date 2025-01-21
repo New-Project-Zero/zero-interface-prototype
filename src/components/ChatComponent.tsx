@@ -69,7 +69,12 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
   }
 
   useEffect(() => {
+    //cleanup
+    let isComponentMounted = true;
+
     const fetchInitialMessage = async () => {
+      if (!isComponentMounted) return;
+
       setIsLoading(true);
       try {
         const response = await fetch('/api/chat', {
@@ -78,22 +83,32 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
           body: JSON.stringify({ message: "You are a tool equipped llm meant to perform specific tasks. You are to keep your answers terse and pertinent. Very little emotion. Start with the greeting 'Hello I am homunculus. I have the following tools equipped: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools.", walletKey }) // Send initial message
         });
 
+        if (!isComponentMounted) return;
+
         const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.details || 'Failed to get response');
         }
 
+        if (isComponentMounted){
         const botMessage: Message = { role: 'bot', content: data.response };
-        setMessages([botMessage]); 
+        setMessages([botMessage]);
+        } 
       } catch (error) {
         console.error('Error fetching initial message:', error);
       } finally {
+        if (isComponentMounted){
         setIsLoading(false);
+        }
       }
     };
 
     fetchInitialMessage();
+
+    return () => {
+      isComponentMounted = false;
+    };
   }, [walletKey]); 
 
   return (
