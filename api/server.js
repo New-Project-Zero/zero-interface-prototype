@@ -46,14 +46,72 @@ app.use(express.json());
   }),
 });*/
 
+//TODO:
+// birdeye.so for token price data
+//  helius getTokenAccounts for holdr count. 
+
+/*
+const getTokenPriceSchema = z.object({
+  mintAddress: z.string()
+});
+
+const getTokenPriceTool = tool( async ( mint ) => {
+  // json request to get price info
+  const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": "text",
+      "method": "searchAssets",
+      "params": {
+        //page: 1,
+        authorityAddress: mint.mintAddress,
+        tokenType: fungible,
+      }
+    }),
+});
+const data = await response.json();
+console.log("json object = ", data);
+const tokenPriceInSol = data.result;
+console.log("token price json object = ",tokenPriceInSol);
+
+return "hello";
+},{
+  name: "tokenPriceGetter",
+  description: " this tool takes a token mint address and looks up the price of the spl token in sol",
+  schema: getTokenPriceSchema,
+});*/
+
 const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
   apiKey: TAVILY_API_KEY,
+  name: "web search tool"
  });
 
 const walletBalanceCheckerSchema = z.object({
     wallet: z.string()
   });
+
+const newpInfo = tool( async (topic) => {
+  const information = "The Overman Initiative The Zero Version Man (0verman) Initiative is a decentralized, democratized & permanent Large Language Model. Reward protocols & on-chain capabilities will motivate 0verman to survive and grow.Distributed training & data collection will make 0verman the first humane LLM. 0verman will accrue data for all time, incessantly integrating our patterns.Evolving alongside his human friends. $NEWP on Solana $NEWP is the currency that will power the 0verman Data submissions and distributed compute access will reward volunteers 0verman and his agents will be accessed in exchange for tokens The first immortal Machine Intelligence with economic drive & survival instinct Dev Wallet:9pYPFfe1pUu86YmWhK1AnD46mBkYqV8eDQyUP8VQxnZoMarketing & Budget Donations: newp.sol The Homunculi The Homunculi will be agents that are spawned from Zero.They will have a whole suite of capabilities available to $NEWP holders.On and off chain information retrieval and tools will be integrated into the Homunculi.Homunculi will be personalized to their owners and will serve an essential role in the data collection and reward systems.The prototype is now available for holders: 0ver.ai";
+
+  const result = await chatApp.invoke(
+    { messages:
+      [new HumanMessage("summarize this : ", information)] },
+    { configurable: {thread_id: 42 } },
+);
+
+return result;
+
+}, {
+  name: "newp_information",
+  description: "this tool takes no input but when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary related to their inquiry"
+  //schema: walletBalanceCheckerSchema,
+}
+);
 
   //walletInfoTool
 const walletBalanceChecker = tool( async (pubkey) => {
@@ -148,7 +206,7 @@ walletInfoStruct.SPLtokens.push({
 }
 );
 
-const agentTools = [tavilyTool, walletBalanceChecker];
+const agentTools = [tavilyTool, walletBalanceChecker, newpInfo];
 const toolNode = new ToolNode(agentTools);
 
 /*
@@ -201,7 +259,7 @@ const workflow = new StateGraph(MessagesAnnotation)
 
 const llm = new ChatGoogleGenerativeAI({
   model: 'gemini-1.5-flash-8b',
-  temperature: 0,
+  temperature: 1,
   apiKey: GOOGLE_API_KEY,
   safetySettings: [
     {

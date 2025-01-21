@@ -78,7 +78,7 @@ export default function App() {
         {showInitialPopup && (
           <div className="fixed inset-0 flex items-center justify-center z-50">
             <div className="bg-black bg-opacity-80 p-8 rounded-lg max-w-md text-center">
-              <h2 className="text-2xl font-bold mb-4">Welcome to Homunculus v0.101</h2>
+              <h2 className="text-2xl font-bold mb-4">Welcome to Homunculus v0.102</h2>
               <p className="mb-6">
                 $NEWP holders can connect their wallets and use the Homunculus prototype. This is an early version. Expansion of capabilities will be implemented regularly with many features planned for the future. 
               </p>
