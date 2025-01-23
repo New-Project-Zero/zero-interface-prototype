@@ -51,39 +51,30 @@ app.use(express.json());
 //  helius getTokenAccounts for holdr count. 
 
 /*
-const getTokenPriceSchema = z.object({
-  mintAddress: z.string()
-});
-
-const getTokenPriceTool = tool( async ( mint ) => {
-  // json request to get price info
+async function getTokenPrice(mintAddress) {
+  // Make a JSON request to the Helius RPC API to get the price of the token.
   const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
     method: 'POST',
     headers: {
-      "Content-Type": "application/json"
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      "jsonrpc": "2.0",
-      "id": "text",
-      "method": "searchAssets",
-      "params": {
-        //page: 1,
-        authorityAddress: mint.mintAddress,
-        tokenType: fungible,
+      'jsonrpc': '2.0',
+      'id': 'text',
+      'method': 'searchAssets',
+      'params': {
+        // page: 1,
+        authorityAddress: mintAddress,
+        tokenType: 'fungible'
       }
-    }),
-});
-const data = await response.json();
-console.log("json object = ", data);
-const tokenPriceInSol = data.result;
-console.log("token price json object = ",tokenPriceInSol);
-
-return "hello";
-},{
-  name: "tokenPriceGetter",
-  description: " this tool takes a token mint address and looks up the price of the spl token in sol",
-  schema: getTokenPriceSchema,
-});*/
+    })
+  });
+  // Parse the response to get the price of the token in SOL.
+  const data = await response.json();
+  const tokenPriceInSol = data.result;
+  // Return the price of the token in SOL.
+  return tokenPriceInSol;
+}*/
 
 const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
@@ -118,6 +109,7 @@ const walletBalanceChecker = tool( async (pubkey) => {
   
   const walletInfoStruct = {
     lamportBalance: 0,
+    lamportBalanceInUSD: 0,
     SPLtokens: [], //five max
   };
 
@@ -156,7 +148,6 @@ const walletSPLTokenHoldings = await fetch(`https://mainnet.helius-rpc.com/?api-
   }),
 });
 const SPLtokens = await walletSPLTokenHoldings.json();
-console.log("spl holdings json = ", SPLtokens.result.token_accounts);
 
 // get each token (5 max)
 let tokenCount = 0;
@@ -188,20 +179,22 @@ for (const token of SPLtokens.result.token_accounts) {
     }),
 });
 const tokenMetaData = await splMetaJSON.json();
+const pricePerToken = tokenMetaData.result.token_info.price_info.price_per_token;
 const metaSymbol = tokenMetaData.result.token_info.symbol;
-console.log("meta symbol = ", metaSymbol);
+const tokenBalanceValue = (pricePerToken * amountHeld).toFixed(2);
 
 walletInfoStruct.SPLtokens.push({
   symbol: metaSymbol,
   mint_address: mintAddr,
-  balance: amountHeld
+  balance: amountHeld,
+  value: tokenBalanceValue
 })
 }
 
   return walletInfoStruct;
 }, {
   name: "balanceChecker",
-  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for each SPL token in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: symbol newline balance newline, mint address. make sure the formnatting is nice.",
+  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for each SPL token in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: Symbol newline Balance newline, Mint Address newline, Value USD. make sure the formatting is nice.",
   schema: walletBalanceCheckerSchema,
 }
 );
