@@ -10,6 +10,10 @@ export default function App() {
   const [showPopup, setShowPopup] = useState(false); // state for popup
   const [showInitialPopup, setShowInitialPopup] = useState(true); // state for initial popup
 
+  const handleDisconnect = () => {
+    setWalletKey(null);
+    setHasRequiredToken(false);
+  };
 
   /*const handleSpawnAgent = async () => {
     if (walletKey && hasRequiredToken) {
@@ -67,7 +71,10 @@ export default function App() {
         <h1 className="text-4xl font-bold">Homunculus Prototype</h1>
       </header>
       <main className="max-w-2xl mx-auto">
-      <PhantomWalletButton onConnect={setWalletKey} />
+      <PhantomWalletButton 
+        onConnect={setWalletKey} 
+        onDisconnect={handleDisconnect}
+      />
       {walletKey && hasRequiredToken && (
         <>
           <ChatComponent walletKey={walletKey} /> {/* Removed agentSpawned prop */}

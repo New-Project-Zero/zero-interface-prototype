@@ -80,7 +80,7 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: "You are a tool equipped llm meant to perform specific tasks. You are to keep your answers terse and pertinent. Very little emotion. Start with the greeting  do not hallucinate tools that you do not have. 'Hello I am homunculus. I have the following tools equipped: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools and the tool name formatted nicely with whitespace and no underscores.", walletKey }) // Send initial message
+          body: JSON.stringify({ message: "You are a tool equipped llm meant to perform specific tasks. You are to keep your answers terse and pertinent. Very little emotion. Start with the greeting  do not hallucinate tools that you do not have. 'Hello I am homunculus. I have the following tools equipped: \n Web search\n Wallet Balance Checker\n New Project Zero Information Assistant' with a description of the tools and the tool name formatted nicely with whitespace and no underscores.", walletKey }) // Send initial message
         });
 
         if (!isComponentMounted) return;

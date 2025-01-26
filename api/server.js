@@ -33,7 +33,6 @@ const HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
 //const HELLOMOON_API_KEY = process.env.VITE_HELLOMOON_API_KEY;
 //const SOLSCAN_API_KEY = process.env.VITE_SOLSCAN_API_KEY;
 
-
 const NEWP_MINT_ADDR = new PublicKey('2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump');
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
 
@@ -50,41 +49,11 @@ app.use(express.json());
 // birdeye.so for token price data
 //  helius getTokenAccounts for holdr count. 
 
-/*
-async function getTokenPrice(mintAddress) {
-  // Make a JSON request to the Helius RPC API to get the price of the token.
-  const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      'jsonrpc': '2.0',
-      'id': 'text',
-      'method': 'searchAssets',
-      'params': {
-        // page: 1,
-        authorityAddress: mintAddress,
-        tokenType: 'fungible'
-      }
-    })
-  });
-  // Parse the response to get the price of the token in SOL.
-  const data = await response.json();
-  const tokenPriceInSol = data.result;
-  // Return the price of the token in SOL.
-  return tokenPriceInSol;
-}*/
-
 const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
   apiKey: TAVILY_API_KEY,
   name: "web search tool"
  });
-
-const walletBalanceCheckerSchema = z.object({
-    wallet: z.string()
-  });
 
 const newpInfo = tool( async (topic) => {
   const information = "The Overman Initiative The Zero Version Man (0verman) Initiative is a decentralized, democratized & permanent Large Language Model. Reward protocols & on-chain capabilities will motivate 0verman to survive and grow.Distributed training & data collection will make 0verman the first humane LLM. 0verman will accrue data for all time, incessantly integrating our patterns.Evolving alongside his human friends. $NEWP on Solana $NEWP is the currency that will power the 0verman Data submissions and distributed compute access will reward volunteers 0verman and his agents will be accessed in exchange for tokens The first immortal Machine Intelligence with economic drive & survival instinct Dev Wallet:9pYPFfe1pUu86YmWhK1AnD46mBkYqV8eDQyUP8VQxnZoMarketing & Budget Donations: newp.sol The Homunculi The Homunculi will be agents that are spawned from Zero.They will have a whole suite of capabilities available to $NEWP holders.On and off chain information retrieval and tools will be integrated into the Homunculi.Homunculi will be personalized to their owners and will serve an essential role in the data collection and reward systems.The prototype is now available for holders: 0ver.ai";
@@ -99,17 +68,57 @@ return result;
 
 }, {
   name: "newp_information",
-  description: "this tool takes no input but when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary related to their inquiry"
+  description: "this tool takes no input but when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary about Newp Project Zero, the 0verman or the $NEWP token."
   //schema: walletBalanceCheckerSchema,
 }
 );
+
+/* need to get set up w birdeye creator
+const checkCreatorToolSchema = z.object({
+  mintAddr: z.string()
+});
+
+const checkCreatorTool = tool( async (mintAddr) => {
+
+  //const otherTokenMints = []; //holds array of other tokens created by this pubkey
+
+  const splMetaJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": "test",
+      "method": "searchAssets",
+      "params": {
+        "supplyMint": mintAddr.mintAddr
+      }
+    }),
+});
+
+const tokenInfo = await splMetaJSON.json();
+//const creatorWalletPubKey = tokenInfo.result.token_info;
+//for (const account of tokenInfo.result.value.account) 
+console.log("account json: ", tokenInfo);
+
+return "hello";
+}, {
+  name: "tokenCreatorCheckTool",
+  description: "this tool takes as input a SPL token mint address. It calls Helius api to retrieve the creator public key associated with that token and then determines if that public key is responsible for other token crerations. It then retrieves the information about the other tokens and determines if the wallet pubkey has participated in the creation of tokens that ended up with low liquidity or other actrivity indicating a history of scams.",
+  schema: checkCreatorToolSchema,
+});*/
+
+const walletBalanceCheckerSchema = z.object({
+  wallet: z.string()
+});
 
   //walletInfoTool
 const walletBalanceChecker = tool( async (pubkey) => {
   
   const walletInfoStruct = {
     lamportBalance: 0,
-    lamportBalanceInUSD: 0,
+    //lamportBalanceInUSD: 0,
     SPLtokens: [], //five max
   };
 
@@ -194,7 +203,7 @@ walletInfoStruct.SPLtokens.push({
   return walletInfoStruct;
 }, {
   name: "balanceChecker",
-  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for each SPL token in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: Symbol newline Balance newline, Mint Address newline, Value USD. make sure the formatting is nice.",
+  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for only five SPL tokens in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: Symbol newline Balance newline, Mint Address newline, Value USD. make sure the formatting is nice.",
   schema: walletBalanceCheckerSchema,
 }
 );
@@ -323,7 +332,7 @@ app.post('/api/chat', async (req, res) => {
   ];*/
 
     // Execute the chatapp
-    console.log("invoking...");
+    //console.log("invoking...");
     const result = await chatApp.invoke(
       { messages:
         [new HumanMessage(message)] },

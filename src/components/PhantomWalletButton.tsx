@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 
 interface PhantomWalletButtonProps {
   onConnect: (publicKey: string) => void
+  onDisconnect?: () => void
 }
 
-export function PhantomWalletButton({ onConnect }: PhantomWalletButtonProps) {
+export function PhantomWalletButton({ onConnect, onDisconnect }: PhantomWalletButtonProps) {
   const [walletKey, setWalletKey] = useState<string | null>(null)
-  const [agentSpawned, setAgentSpawned] = useState(false)
 
   const connectWallet = async () => {
     const provider = window.solana;
@@ -23,9 +23,18 @@ export function PhantomWalletButton({ onConnect }: PhantomWalletButtonProps) {
     }
   };
 
-  /*const handleSpawnAgent = async () => {
-    setAgentSpawned(true);
-  }*/
+  const disconnectWallet = async () => {
+    const provider = window.solana;
+    if (provider) {
+      try {
+        await provider.disconnect();
+        setWalletKey(null);
+        onDisconnect && onDisconnect();
+      } catch (error) {
+        console.error("Error disconnecting from Phantom Wallet:", error);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleAccountsChanged = (accounts: string[]) => {
@@ -44,13 +53,21 @@ export function PhantomWalletButton({ onConnect }: PhantomWalletButtonProps) {
 
   return (
     <div className="flex flex-col items-center w-full gap-4">
-      <button 
-        onClick={connectWallet}
-        className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
-      >
-        {walletKey ? `Connected: ${walletKey.slice(0, 4)}...${walletKey.slice(-4)}` : 'Connect Phantom Wallet'}
-      </button>
+      {!walletKey ? (
+        <button
+          onClick={connectWallet}
+          className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+        >
+          Connect Phantom Wallet
+        </button>
+      ) : (
+        <button
+          onClick={disconnectWallet}
+          className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+        >
+          Disconnect: {walletKey.slice(0, 4)}...{walletKey.slice(-4)}
+        </button>
+      )}
     </div>
   )
 }
-
