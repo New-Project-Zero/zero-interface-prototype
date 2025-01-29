@@ -70,7 +70,7 @@ const LeafGenerator = () => {
         <img
           key={leaf.id}
           id={`leaf-${leaf.id}`}
-          src={`src/assets/leaf${(leaf.id % 3) + 1}.svg`}
+          src={`/leaf${(leaf.id % 3) + 1}.svg`}
           alt="leaf"
           className="leaf"
           style={{
