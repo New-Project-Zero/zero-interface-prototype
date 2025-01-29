@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react'
 import { PhantomWalletButton } from './components/PhantomWalletButton'
 import { ChatComponent } from './components/ChatComponent'
+import { SidebarButtons } from './components/SidebarButtons'
+import LeafGenerator from './components/LeafGenerator'
 //import { AgentStatus } from './components/AgentStatus'
+
+//gotta be a better way to get tools
+interface Tool { 
+  name: string;
+  action: string;
+}
+const tools: Tool[] = [
+  { name: 'Wallet Information', action: 'publicKey' },
+  { name: 'Token Information', action: 'contract' },
+];
 
 export default function App() { 
   const [walletKey, setWalletKey] = useState<string | null>(null)
@@ -33,7 +45,8 @@ export default function App() {
       }
     }
   };*/
-  
+
+
   useEffect(() => {
     const checkTokenBalance = async () => {
       if (walletKey) {
@@ -66,28 +79,40 @@ export default function App() {
   }, [walletKey]); // run effect whenever walletKey changes
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-900 to-black text-white font-serif p-4">
-      <header className="text-center mb-8">
-        <h1 className="text-4xl font-bold">Homunculus Prototype</h1>
+    
+    <div className="min-h-screen bg-gradient-to-b from-green-900 to-black text-white font-serif p-2 relative overflow-hidden">
+      <LeafGenerator />
+      <header className="text-center mb-6 relative z-10">
+        <h1 className="text-4xl font-bold">🌱 Homunculus Prototype 🌱</h1>
+        <div className="mt-4 flex justify-center max-w-xs mx-auto"> {/* Centered the button */}
+        <PhantomWalletButton 
+          onConnect={setWalletKey} 
+          onDisconnect={handleDisconnect}
+        />
+        </div>
       </header>
-      <main className="max-w-2xl mx-auto">
-      <PhantomWalletButton 
-        onConnect={setWalletKey} 
-        onDisconnect={handleDisconnect}
-      />
+      <main className="max-w-8xl mx-auto relative z-10">
       {walletKey && hasRequiredToken && (
-        <>
-          <ChatComponent walletKey={walletKey} /> {/* Removed agentSpawned prop */}
-        </>
-      )}
+          <div className="mx-auto flex mt-2 container"> {/* Added margin-top to create space below the wallet button */}
+          {/* Sidebar */}
+          <aside className="w-64 p-4 mr-2 bg-gray-800 rounded-lg info-section"> {/* Added margin-right and background */}
+            <SidebarButtons toolList={tools} /> 
+          </aside>
+
+            {/* Main Content Area */}
+          <section className="flex-1 bg-gray-800 rounded-lg chat-section"> {/* Added background */}
+            <ChatComponent walletKey={walletKey} /> 
+          </section>
+        </div>
+        )}
 
         {/* Initial Popup */}
         {showInitialPopup && (
           <div className="fixed inset-0 flex items-center justify-center z-50">
             <div className="bg-black bg-opacity-80 p-8 rounded-lg max-w-md text-center">
-              <h2 className="text-2xl font-bold mb-4">Welcome to Homunculus v0.102</h2>
+              <h2 className="text-2xl font-bold mb-4">Welcome to Homunculus v0.103</h2>
               <p className="mb-6">
-                $NEWP holders can connect their wallets and use the Homunculus prototype. This is an early version. Expansion of capabilities will be implemented regularly with many features planned for the future. 
+                $NEWP holders can connect their wallets and use the Homunculus prototype. This is an early version so some functionality may be buggy. Expansion of capabilities will be implemented regularly with many features planned for the future. 
               </p>
               <button
                 className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"

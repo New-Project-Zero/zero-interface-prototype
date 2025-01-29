@@ -46,8 +46,132 @@ app.use(express.json());
 });*/
 
 //TODO:
-// birdeye.so for token price data
 //  helius getTokenAccounts for holdr count. 
+// use ether.js/webjs to get ERC tokens and ETH data
+
+function isValidWalletAddress(address) {
+  // Regular expression to match Solana wallet addresses
+  const walletAddressRegex = /^[\w]{43,44}$/;
+
+  return walletAddressRegex.test(address);
+}
+
+function isValidContractAddress(address) {
+  // Regular expression to match Solana contract addresses
+  const contractAddressRegex = /^[\w]{32,44}$/; 
+
+  return contractAddressRegex.test(address);
+}
+
+async function fetchWalletInformation(pubKey) {
+  try {
+    const walletInfoStruct = {
+      balance: 0,
+      SPLholdings: [], //five max
+    };
+  
+    //SOL balance check
+    const walletLamportBalanceJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getBalance",
+        "params": [
+          pubKey,
+        ]
+      }),
+  })
+  const lamportData = await walletLamportBalanceJSON.json();
+ 
+  //fill struct
+  walletInfoStruct.balance = lamportData.result.value / LAMPORTS_PER_SOL;
+
+  //request for spl holdings
+  const walletSPLTokenHoldings = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "getTokenAccounts",
+      "params": {
+          "owner": pubKey,
+    }
+    }),
+  });
+  const SPLtokensjson = await walletSPLTokenHoldings.json();
+ 
+  // get each token (5 max)
+  for (const token of SPLtokensjson.result.token_accounts) {
+    const tokenMetadata = await fetchTokenMetadata(token.mint);
+    
+    if (!tokenMetadata || !token.mint || !token.amount || !tokenMetadata.symbol) {
+      continue; // Skip to the next token if any of these are null
+      }
+
+
+      //fix decimals
+      //get total number of tokens held in wallet
+      console.log("symbol: ", tokenMetadata.symbol);
+    const symbol = tokenMetadata.symbol || "Unknown";
+    const tokenBalance = (token.amount / 1_000_000);
+    const price = (tokenMetadata.price * tokenBalance);
+    const tokenBalanceValue = (tokenMetadata.price || 0).toFixed(2);
+
+    walletInfoStruct.SPLholdings.push({
+      symbol: symbol,
+      mint_address: token.mint,
+      balance: tokenBalance,
+      price: price,
+      balanceValue: tokenBalanceValue
+    })
+    /*if (walletInfoStruct.SPLholdings.length >= 5) {
+      break; // Exit the loop if we've processed 5 tokens
+    }*/
+
+  }
+  return walletInfoStruct;
+  } catch (error) {
+    console.error('Error fetching wallet information: ', error);
+    return null;
+  }
+}
+
+async function fetchTokenMetadata(mintAddr) {
+  try {
+  const splMetaJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "jsonrpc": "2.0",
+      "id": "test",
+      "method": "getAsset",
+      "params": {
+        "id": mintAddr
+      }
+    }),
+  });
+
+  const tokenMetaData = await splMetaJSON.json();
+
+  return {
+    price: tokenMetaData?.result?.token_info?.price_info?.price_per_token ?? null,
+    symbol: tokenMetaData?.result?.token_info?.symbol ?? null,
+    imageLink: tokenMetaData?.result?.content?.links?.image ?? null,
+    };
+  } catch (error) {
+    console.error('Error fetching token metadata: ', error);
+    return null;
+  }
+}
 
 const tavilyTool = new TavilySearchResults({ 
   maxResults: 3,
@@ -69,7 +193,6 @@ return result;
 }, {
   name: "newp_information",
   description: "this tool takes no input but when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary about Newp Project Zero, the 0verman or the $NEWP token."
-  //schema: walletBalanceCheckerSchema,
 }
 );
 
@@ -115,95 +238,10 @@ const walletBalanceCheckerSchema = z.object({
 
   //walletInfoTool
 const walletBalanceChecker = tool( async (pubkey) => {
-  
-  const walletInfoStruct = {
-    lamportBalance: 0,
-    //lamportBalanceInUSD: 0,
-    SPLtokens: [], //five max
-  };
-
-  //json payload fro SOL balance check
-  const walletLamportBalanceJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-    method: 'POST',
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      "jsonrpc": "2.0",
-      "id": 1,
-      "method": "getBalance",
-      "params": [
-        pubkey.wallet,
-      ]
-    }),
-})
-const lamportData = await walletLamportBalanceJSON.json();
-//fill struct
-walletInfoStruct.lamportBalance = lamportData.result.value / LAMPORTS_PER_SOL;
-
-//request for spl holdings
-const walletSPLTokenHoldings = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-  method: 'POST',
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "getTokenAccounts",
-    "params": {
-        "owner": pubkey.wallet,
-  }
-  }),
-});
-const SPLtokens = await walletSPLTokenHoldings.json();
-
-// get each token (5 max)
-let tokenCount = 0;
-for (const token of SPLtokens.result.token_accounts) {
-  tokenCount ++;
-  if (tokenCount > 5) {
-    break; // Exit the loop if we've processed 5 tokens
-  }
-
-  const mintAddr = token.mint;
-  const amountHeld = token.amount/1_000_000;
-  //const tokenBalanceInWallet = token
-  console.log("mint addr = ", mintAddr);
-  console.log("amount = ", amountHeld);
-
-  //get metadata
-  const splMetaJSON = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-    method: 'POST',
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      "jsonrpc": "2.0",
-      "id": "test",
-      "method": "getAsset",
-      "params": {
-        "id": mintAddr
-      }
-    }),
-});
-const tokenMetaData = await splMetaJSON.json();
-const pricePerToken = tokenMetaData.result.token_info.price_info.price_per_token;
-const metaSymbol = tokenMetaData.result.token_info.symbol;
-const tokenBalanceValue = (pricePerToken * amountHeld).toFixed(2);
-
-walletInfoStruct.SPLtokens.push({
-  symbol: metaSymbol,
-  mint_address: mintAddr,
-  balance: amountHeld,
-  value: tokenBalanceValue
-})
-}
-
-  return walletInfoStruct;
+  return fetchWalletInformation(pubkey.wallet);
 }, {
   name: "balanceChecker",
-  description: "this tool takes as input a public wallet key for a solana wallet. it calls helius API to retrieve solana and spl tokens held in a wallet. It returns a struct with a lamport balance in SOL and array. The array has an entry for only five SPL tokens in the wallet. This data is to be presented with the solana balance and then each SPL token categorized. Each SPL token has a balance, symbol and mint address. print the SOL balance followed by two newlines and then print a block of information for each token like so: Symbol newline Balance newline, Mint Address newline, Value USD. make sure the formatting is nice.",
+  description: "this tool takes as input a public wallet key for a solana wallet. it calls the fetchWalletInfo function which returns a struct with information about the SOL balance and token info. present this nicely formatted.",
   schema: walletBalanceCheckerSchema,
 }
 );
@@ -358,6 +396,48 @@ app.post('/api/chat', async (req, res) => {
       details: error instanceof Error ? error.message : String(error)
     });
   }
+});
+
+app.post('/api/contract', async (req, res) => {
+  // Sanitize input
+  const mintAddr = req.body.inputValue;
+
+  if (!isValidContractAddress(mintAddr)) {
+    return res.status(400).json({error: 'invalid contract address format'});
+  }
+
+  const data = {
+    mintAddr: mintAddr,
+    symbol: '',
+    price: 0,
+    imageLink: '',
+  };
+
+  // Get metadata using the function
+  const updatedData = await fetchTokenMetadata(data.mintAddr);
+
+  // Merge the updated data with the original object
+  const mergedData = { ...data, ...updatedData };
+
+  // Return the merged data as JSON
+  return res.json(mergedData);
+});
+
+app.post('/api/publicKey', async (req, res) => {
+  //sanitize...
+  const pubKey = req.body.inputValue;
+  if (!isValidWalletAddress(pubKey)) {
+    return res.status(400).json({error: 'invalid wallet public key format'});
+  }
+  const data = {
+    pubkey: pubKey,
+    balance: '',
+    SPLholdings: []
+  }
+  const updatedData = await fetchWalletInformation(data.pubkey);
+  const mergedData = { ...data, ...updatedData};
+  console.log(mergedData);
+  return res.json(mergedData);
 });
 
 app.post('/api/check-token', async (req, res) => {
