@@ -153,7 +153,7 @@ export function SidebarButtons({ toolList }: agentToolProps) {
             <div style={{ padding: '4px 0' }}>
                 <b>Owned Tokens:</b>
                 <ul style={{
-                  maxHeight: '300px', /* Adjust this value as needed - this sets the max height of the container */
+                  maxHeight: '150px', /* Adjust this value as needed - this sets the max height of the container */
                   overflowY: 'auto',  /* Or overflow: 'auto'; for both horizontal and vertical */
                   border: '1px solid #ccc', /* Just for visual container, you can remove this if you don't want border */
                   //padding: '10px'      /* Just for visual container */

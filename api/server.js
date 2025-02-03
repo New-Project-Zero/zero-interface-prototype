@@ -1,5 +1,5 @@
-import express from 'express';
-//import { MongoClient } from 'mongodb';
+import express, { response } from 'express';
+import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { AIMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
@@ -20,6 +20,8 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
+import CryptoHandler from './cryptoHandler.js'
+//const CryptoHandler = require('./cryptoHandler');
 
 dotenv.config();
 
@@ -48,6 +50,40 @@ app.use(express.json());
 //TODO:
 //  helius getTokenAccounts for holdr count. 
 // use ether.js/webjs to get ERC tokens and ETH data
+
+//conversation class (refactor this)
+class Conversation {
+  constructor() {
+    this.conversations = [];
+  }
+
+  addConversation(input, response) {
+    // Add validation to ensure input and response are not undefined or null.
+    if (input === undefined || input === null || response === undefined || response === null) {
+        throw new Error("Input and response cannot be undefined or null.");
+    }
+    
+    const timestamp = new Date();
+    this.conversations.push({ input, response, timestamp });
+  }
+
+  getConversations() {
+    return this.conversations;
+  }
+
+  toJSON() {
+    // Properly serialize the timestamp to a string representation.
+    return JSON.stringify(this.conversations, (key, value) => {
+      if (value instanceof Date) {
+        return value.toISOString();
+      }
+      return value;
+    }, 2); // Use 2 spaces for pretty printing
+  }
+}
+
+// new conversation:
+const conversationStore = new Conversation();
 
 function isValidWalletAddress(address) {
   // Regular expression to match Solana wallet addresses
@@ -115,14 +151,14 @@ async function fetchWalletInformation(pubKey) {
       continue; // Skip to the next token if any of these are null
       }
 
-
       //fix decimals
       //get total number of tokens held in wallet
-      console.log("symbol: ", tokenMetadata.symbol);
+      //console.log("symbol: ", tokenMetadata.symbol);
+      //console.log("decimals:  ", tokenMetadata.decimals);
     const symbol = tokenMetadata.symbol || "Unknown";
-    const tokenBalance = (token.amount / 1_000_000);
-    const price = (tokenMetadata.price * tokenBalance);
-    const tokenBalanceValue = (tokenMetadata.price || 0).toFixed(2);
+    const tokenBalance = (token.amount / (10 ** tokenMetadata.decimals));
+    const price = (tokenMetadata.price);
+    const tokenBalanceValue = (price * tokenBalance || 0).toFixed(2);
 
     walletInfoStruct.SPLholdings.push({
       symbol: symbol,
@@ -161,8 +197,10 @@ async function fetchTokenMetadata(mintAddr) {
   });
 
   const tokenMetaData = await splMetaJSON.json();
+  //console.log(tokenMetaData);
 
   return {
+    decimals: tokenMetaData?.result?.token_info?.decimals ?? null,
     price: tokenMetaData?.result?.token_info?.price_info?.price_per_token ?? null,
     symbol: tokenMetaData?.result?.token_info?.symbol ?? null,
     imageLink: tokenMetaData?.result?.content?.links?.image ?? null,
@@ -192,7 +230,7 @@ return result;
 
 }, {
   name: "newp_information",
-  description: "this tool takes no input but when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary about Newp Project Zero, the 0verman or the $NEWP token."
+  description: "when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary about Newp Project Zero, the 0verman or the $NEWP token."
 }
 );
 
@@ -249,7 +287,7 @@ const walletBalanceChecker = tool( async (pubkey) => {
 const agentTools = [tavilyTool, walletBalanceChecker, newpInfo];
 const toolNode = new ToolNode(agentTools);
 
-/*
+//connect to db
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
 const dbName = 'chatstorage';
@@ -271,7 +309,7 @@ async function connectToDatabase() {
 //db connection
 const chatCollection = await connectToDatabase();
 
-
+/*
 // append sys prompt
 const systemPrompt = {
   role: "system",
@@ -356,37 +394,109 @@ const agent = createReactAgent({
   checkpointSaver: memory,
 })*/
 
+app.post('/api/load-chat', async (req, res) => {
+  const conversation = [];
+
+  //loop through and encrypt each piece and then store
+  try {
+    const walletKey = req.body.walletKey;
+
+    if (typeof walletKey !== 'string') {
+      return res.status(400).json({ error: 'Invalid walletKey format. Must be a string.' });
+    }
+
+    const data = await chatCollection.find({ walletKey: walletKey }, { sort: { ObjectID: -1 } }).toArray((err, docs) => {
+      if (err) throw err;
+      console.log(JSON.stringify(docs, null, 2));
+    });
+
+    for (const chat of data){
+      const toDecrypt = chat.encryptedData;
+
+      const decoded = await CryptoHandler.decrypt(toDecrypt, walletKey);
+
+      conversation.push(decoded)
+      }
+
+      //console.log(conversation);
+    res.json({
+      conversation // send array back
+    });
+  } catch (error) {
+  res.status(500).json({
+    error: 'Failed to decrypt chat',
+    details: error instanceof Error ? error.message : String(error)
+  });
+}
+});
+
+// take wallet pubkey and use it to save whole message history as encrypted block in db
+app.post('/api/save-chat', async (req, res) => {
+    //loop through and encrypt each piece and then store
+    try {
+      const walletKey = req.body.walletKey;
+
+      if (typeof walletKey !== 'string') {
+        return res.status(400).json({ error: 'Invalid walletKey format. Must be a string.' });
+      }
+
+      const convo = conversationStore.getConversations();
+
+      if (!convo || !Array.isArray(convo)) {
+        return res.status(400).json({ error: 'Invalid conversation data.' });
+      }
+
+      const encryptedDocs = [];
+      for (const chat in convo){
+        const { input, response, timestamp } = convo[chat];
+
+        const dataToEncrypt = { input, response, timestamp };
+
+        const encryptedData = await CryptoHandler.encrypt(
+            dataToEncrypt,
+            walletKey
+          );
+
+        encryptedDocs.push({
+          walletKey: walletKey.toString(),
+          encryptedData: encryptedData.toString(),
+        });  
+      }
+
+      await chatCollection.insertMany(encryptedDocs);
+
+      //await decode(encryptedDocs.pop().encryptedData, walletKey);
+
+      res.json({
+        response: "Chat History saved successfully!" // Frontend expects response as a simple string
+      });
+    } catch (error) {
+    res.status(500).json({
+      error: 'Failed to save encrypted chat',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 app.post('/api/chat', async (req, res) => {
 
   try {
     const { message, walletKey } = req.body;
-  
-    /*
-    const input = [
-    {
-      role: "user",
-      content: message,
-    },
-  ];*/
 
     // Execute the chatapp
-    //console.log("invoking...");
+    console.log("invoking...");
     const result = await chatApp.invoke(
       { messages:
         [new HumanMessage(message)] },
       { configurable: {thread_id: 42 } },
   );
 
-    //console.log(model_response);
-   /* await chatCollection.insertOne({
-      walletKey: walletKey,
-      message: message,
-      response: model_response,
-      timestamp: new Date()
-    });*/
+  const model_response = result.messages[result.messages.length - 1].content;
 
+  conversationStore.addConversation(message, model_response, new Date());
+  
     res.json({
-      response: result.messages[result.messages.length - 1].content // Frontend expects response as a simple string
+      response: model_response // Frontend expects response as a simple string
     });
 
   } catch (error) {
@@ -436,7 +546,7 @@ app.post('/api/publicKey', async (req, res) => {
   }
   const updatedData = await fetchWalletInformation(data.pubkey);
   const mergedData = { ...data, ...updatedData};
-  console.log(mergedData);
+  //console.log(mergedData);
   return res.json(mergedData);
 });
 

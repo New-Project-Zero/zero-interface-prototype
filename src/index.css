@@ -142,24 +142,22 @@
 }
 
 .container {
-  display: flex; 
   min-height: 600px;         /* Enable flexbox layout */
-  height: 100vh;      /* Make container fill viewport height */
+  height: 85vh;      /* Make container fill viewport height */
+  width: 100%;
 }
 
 .info-section {
   flex: 1; 
   max-height: 100vh;
-  min-height: 600px;/* Allow info section to grow */ 
+  min-height: 300px;/* Allow info section to grow */ 
   padding-top: 4;
-
-  /* ...other info-section styles... */ 
 }
 
 .info-section-display { /*  General override - less targeted, use if needed */
   overflow-y: auto;
   height: auto !important;
-  max-height: 100% !important;
+  max-height: 90% !important;
 }
 
 .info-section-display ul { /* Target the <ul> inside .info-section-display */
@@ -173,8 +171,7 @@
 .chat-section { /* Assuming you have a class 'chat-section' for your chat */
   flex: 3;   
   overflow-y: auto; /* Enable vertical scrolling when content overflows */
-  max-height: 100vh;            /* Allow chat section to grow */
-  min-height: 600px;
+  min-height: 300px;/* Allow info section to grow */ 
   /* ...other chat-section styles... */
 }
 

@@ -92,19 +92,19 @@ export default function App() {
         </div>
       </header>
       <main className="max-w-8xl mx-auto relative z-10">
-      {walletKey && hasRequiredToken && (
-          <div className="mx-auto flex mt-2 container"> {/* Added margin-top to create space below the wallet button */}
-          {/* Sidebar */}
-          <aside className="w-64 p-4 mr-2 bg-gray-800 rounded-lg info-section"> {/* Added margin-right and background */}
-            <SidebarButtons toolList={tools} /> 
-          </aside>
+  {walletKey && hasRequiredToken && (
+    <div className="mx-auto flex w-full max-w-8xl h-[95vh]"> {/* w-full ensures it tries to take full width within max-w-8xl */}
+      {/* Sidebar */}
+      <aside className="w-64 max-w-xs p-4 mr-2 bg-gray-800 rounded-lg info-section"> {/* max-w-xs limits sidebar width */}
+        <SidebarButtons toolList={tools} />
+      </aside>
 
-            {/* Main Content Area */}
-          <section className="flex-1 bg-gray-800 rounded-lg chat-section"> {/* Added background */}
-            <ChatComponent walletKey={walletKey} /> 
-          </section>
-        </div>
-        )}
+      {/* Main Content Area */}
+      <section className="flex-1 bg-gray-800 rounded-lg chat-section"> {/* flex-1 makes it grow */}
+        <ChatComponent walletKey={walletKey} />
+      </section>
+    </div>
+  )}
 
         {/* Initial Popup */}
         {showInitialPopup && (
