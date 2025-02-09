@@ -148,7 +148,8 @@
 }
 
 .info-section {
-  flex: 1; 
+  flex: 1;
+  max-width: 210px; 
   max-height: 100vh;
   min-height: 300px;/* Allow info section to grow */ 
   padding-top: 4;
@@ -166,6 +167,20 @@
   overflow-x: hidden;    /*  Keep horizontal overflow hidden */
   box-sizing: border-box; /*  Ensure padding/border are inside height */
   padding-bottom: 1px;    /*  Tiny padding trick (optional, but can help) */
+}
+
+.agent-section {
+  flex: 1;
+  max-width: 210px; 
+  max-height: 100vh;
+  min-height: 300px;/* Allow info section to grow */ 
+  padding-top: 4;
+}
+
+.agent-info-section {
+    overflow-y: auto;
+    height: auto;
+    max-height: 90%;
 }
 
 .chat-section { /* Assuming you have a class 'chat-section' for your chat */

@@ -2,18 +2,10 @@ import express, { response } from 'express';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { AIMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
+import { HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from 'zod';
-import {
-  START,
-  END,
-  MessagesAnnotation,
-  StateGraph,
-  MemorySaver,
-  Annotation,
-  messagesStateReducer,
-} from "@langchain/langgraph";
+import { MemorySaver } from "@langchain/langgraph";
 //import { v4 as uuidv4 } from "uuid";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { Connection, PublicKey } from '@solana/web3.js';
@@ -21,8 +13,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import CryptoHandler from './cryptoHandler.js'
-//const CryptoHandler = require('./cryptoHandler');
-
+import { pipeline } from '@xenova/transformers';
 dotenv.config();
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
@@ -50,6 +41,9 @@ app.use(express.json());
 //TODO:
 //  helius getTokenAccounts for holdr count. 
 // use ether.js/webjs to get ERC tokens and ETH data
+// fix enter key cursor remain in field after press
+// testing environment set up
+// 
 
 //conversation class (refactor this)
 class Conversation {
@@ -84,6 +78,29 @@ class Conversation {
 
 // new conversation:
 const conversationStore = new Conversation();
+
+//strip convo of bs
+async function stripConvo() {
+  const convo = conversationStore.getConversations();
+  //convo.shift();
+  console.log(convo);
+  
+  if (!convo || !Array.isArray(convo)) {
+    return res.status(400).json({ error: 'Invalid conversation data.' });
+  }
+
+  //check empty
+  if (convo.length === 0) {
+    return Promise.resolve(JSON.stringify([])); // Return an empty array as string
+  }
+
+  // strip timestamps. slice to get rid of initial chat with system prompt
+  const inputs = convo.slice(1).map(item => {
+    return item.input; // Extract only the "input"
+  });
+
+  return Promise.resolve(inputs.join(','));
+}
 
 function isValidWalletAddress(address) {
   // Regular expression to match Solana wallet addresses
@@ -217,20 +234,22 @@ const tavilyTool = new TavilySearchResults({
   name: "web search tool"
  });
 
-const newpInfo = tool( async (topic) => {
-  const information = "The Overman Initiative The Zero Version Man (0verman) Initiative is a decentralized, democratized & permanent Large Language Model. Reward protocols & on-chain capabilities will motivate 0verman to survive and grow.Distributed training & data collection will make 0verman the first humane LLM. 0verman will accrue data for all time, incessantly integrating our patterns.Evolving alongside his human friends. $NEWP on Solana $NEWP is the currency that will power the 0verman Data submissions and distributed compute access will reward volunteers 0verman and his agents will be accessed in exchange for tokens The first immortal Machine Intelligence with economic drive & survival instinct Dev Wallet:9pYPFfe1pUu86YmWhK1AnD46mBkYqV8eDQyUP8VQxnZoMarketing & Budget Donations: newp.sol The Homunculi The Homunculi will be agents that are spawned from Zero.They will have a whole suite of capabilities available to $NEWP holders.On and off chain information retrieval and tools will be integrated into the Homunculi.Homunculi will be personalized to their owners and will serve an essential role in the data collection and reward systems.The prototype is now available for holders: 0ver.ai";
+//see if its possible to get better doc read buffer thingsfor this
+const newpInfo = tool( async () => {
+  const information = "The Overman Initiative The Zero Version Man (0verman) Initiative is a decentralized, democratized & permanent Large Language Model. Reward protocols & on-chain capabilities will motivate 0verman to survive and grow.Distributed training & data collection will make 0verman the first humane LLM. 0verman will accrue data for all time, incessantly integrating our patterns.Evolving alongside his human friends. $NEWP on Solana $NEWP is the currency that will power the 0verman Data submissions and distributed compute access will reward volunteers 0verman and his agents will be accessed in exchange for tokens The first immortal Machine Intelligence with economic drive & survival instinct Dev Wallet:9pYPFfe1pUu86YmWhK1AnD46mBkYqV8eDQyUP8VQxnZo Marketing & Budget Donations: newp.sol The Homunculi The Homunculi will be agents that are spawned from Zero.They will have a whole suite of capabilities available to $NEWP holders.On and off chain information retrieval and tools will be integrated into the Homunculi.Homunculi will be personalized to their owners and will serve an essential role in the data collection and reward systems.The prototype is now available for holders: 0ver.ai. $NEWP is a solana token and the contract address opr CA is 2Xf4kHq69r4gh763aTGN82XvYzPMhXrRhAEJ29trpump: ";
 
-  const result = await chatApp.invoke(
+  /*
+  const result = await agent.invoke(
     { messages:
       [new HumanMessage("summarize this : ", information)] },
     { configurable: {thread_id: 42 } },
-);
+);*/
 
-return result;
+return information;
 
 }, {
   name: "newp_information",
-  description: "when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and return a summary about Newp Project Zero, the 0verman or the $NEWP token."
+  description: "when a user inquires about NEWP, newp, New Project Zero, Zero Version Man, the plans for the future of the project, implementation or anything else related to New Project Zero you will analyze this text block and answer user questions. Usr questions like 'What is $NEWP' 'What is 0verman' etc. Always consult this tool for answers about New Project Zero."
 }
 );
 
@@ -285,7 +304,6 @@ const walletBalanceChecker = tool( async (pubkey) => {
 );
 
 const agentTools = [tavilyTool, walletBalanceChecker, newpInfo];
-const toolNode = new ToolNode(agentTools);
 
 //connect to db
 const uri = 'mongodb://localhost:27017';
@@ -305,35 +323,8 @@ async function connectToDatabase() {
   }
 }
 
-
 //db connection
 const chatCollection = await connectToDatabase();
-
-/*
-// append sys prompt
-const systemPrompt = {
-  role: "system",
-  content: "You are a stoic AI that answers technically and to the point. You will be given a mint contract address for a solana blockchain token. You will use the tool to get as much info as possible about that token and return it in a nicely formatted manner. If you are asked about something not related to cryptocurrency then you will use the tavily search tool to recover some relevant information and present it to the user."
-};
-
-//define call model function
-const callModel = async (state) => {
-  console.log("calling model");
-  const messagesWithSysPrompt = [systemPrompt, ...state.messages];
-  console.log("getting response");
-  const response = await llmWithTools.invoke(messagesWithSysPrompt);
-  console.log("response = ", response);
-  return {messages: response};
-};
-
-//new graph
-const workflow = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addNode("tools", toolNodeForGraph)
-  .addEdge("__start__", "agent")
-  .addConditionalEdges("agent", shouldContinue)
-  .addEdge("tools", "agent")
-*/
 
 const llm = new ChatGoogleGenerativeAI({
   model: 'gemini-1.5-flash-8b',
@@ -353,86 +344,36 @@ const llm = new ChatGoogleGenerativeAI({
       threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
     },
   ], 
-}).bindTools(agentTools);
-
-//determine continue or not
-function shouldContinue(state) {
-  const messages = state.messages;
-  const lastMessage = messages[messages.length - 1];
-
-   // If  tool call route to the "tools" node
-   if (lastMessage.tool_calls?.length) {
-    return "tools";
-  }
-  // Otherwise stop (reply to the user)
-  return "__end__";
-}
-
-async function callModel(state) {
-  const response = await llm.invoke(state.messages);
-
-  // We return a list, because this will get added to the existing list
-  return { messages: [response] };
-}
-
-//define graph
-const workflow = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addEdge("__start__", "agent") // __start__ for the entrypoint
-  .addNode("tools", toolNode)
-  .addEdge("tools", "agent")
-  .addConditionalEdges("agent", shouldContinue);
-//add mem
-const memory = new MemorySaver();
-//compile
-const chatApp = workflow.compile({ checkpointer: memory });
-
-/*
-const agent = createReactAgent({
-  llm: llm,
-  tools: agentTools,
-  checkpointSaver: memory,
-})*/
-
-app.post('/api/load-chat', async (req, res) => {
-  const conversation = [];
-
-  //loop through and encrypt each piece and then store
-  try {
-    const walletKey = req.body.walletKey;
-
-    if (typeof walletKey !== 'string') {
-      return res.status(400).json({ error: 'Invalid walletKey format. Must be a string.' });
-    }
-
-    const data = await chatCollection.find({ walletKey: walletKey }, { sort: { ObjectID: -1 } }).toArray((err, docs) => {
-      if (err) throw err;
-      console.log(JSON.stringify(docs, null, 2));
-    });
-
-    for (const chat of data){
-      const toDecrypt = chat.encryptedData;
-
-      const decoded = await CryptoHandler.decrypt(toDecrypt, walletKey);
-
-      conversation.push(decoded)
-      }
-
-      //console.log(conversation);
-    res.json({
-      conversation // send array back
-    });
-  } catch (error) {
-  res.status(500).json({
-    error: 'Failed to decrypt chat',
-    details: error instanceof Error ? error.message : String(error)
-  });
-}
 });
 
-// take wallet pubkey and use it to save whole message history as encrypted block in db
-app.post('/api/save-chat', async (req, res) => {
-    //loop through and encrypt each piece and then store
+//add mem
+const checkpointer = new MemorySaver();
+
+const agent = new createReactAgent({
+  llm: llm,
+  tools: agentTools,
+  checkpointSaver: checkpointer,
+  systemMessage: "You are a tool equipped llm meant to perform specific tasks. Start with the greeting . 'Hello I am homunculus. I have the following tools equipped: bulleted list of tools formatted nicely in readbale format with each tool on a new line lik this: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools and the tool name formatted nicely with whitespace and no underscores asterisks etc."
+});
+
+
+
+app.post('/api/store-homunculus', async (req, res) => {
+    //sentiment analysis done here
+  /* dont need timestamp and we can skip the initial intro
+   response as well as get of seperator/escape characters
+    from array. Strip timestamps but later we want the 
+    timestamps so we can determine rapidity of 
+    responses etc for valuable info. need to reimplement with
+    the transformer to better analyze perosnality
+    disposition. going to use xenova instead so remove nlp 
+    stuff!
+
+    maybe consider feeding each response in turn into the 
+    sentiment analyzer and then take top score for that input. That will give us better overall idea disposition.
+
+    move this to frontend for client side stuff
+  */
     try {
       const walletKey = req.body.walletKey;
 
@@ -440,42 +381,142 @@ app.post('/api/save-chat', async (req, res) => {
         return res.status(400).json({ error: 'Invalid walletKey format. Must be a string.' });
       }
 
-      const convo = conversationStore.getConversations();
-
-      if (!convo || !Array.isArray(convo)) {
-        return res.status(400).json({ error: 'Invalid conversation data.' });
+      const convoString = await stripConvo();
+      console.log(convoString);
+      
+      //fix error handling properly here
+      if (convoString.length == 0) {
+        return res.json('No conversation data to process.');
       }
+      // --- Sentiment Analysis ---
+      const characterizer = await pipeline('zero-shot-classification');
+      const labels = [
+        'energetic', 'mellow', 'joyous', 'melancholy', 'spontaneous', 'rigid',
+        'curious', 'pragmatic', 'empathetic', 'reserved', 'assertive', 'playful',
+        'analytical', 'dreamy', 'stoic', 'charismatic', 'skeptical', 'adventurous',
+        'cautious', 'altruistic'
+    ];
+      const out = await characterizer(convoString, labels);
+      console.log("Raw characterization output:", out); // Log the raw output for debugging
+    
+      // --- Process 'out' object for frontend display ---
+      const formattedOutput = []; // Array to hold "category: score" strings
+    
+      if (out && out.labels && out.scores && out.labels.length === out.scores.length) {
+          for (let i = 0; i < out.labels.length; i++) {
+            const label = out.labels[i];
+            const score = out.scores[i];
+            const trimmedScore = score.toFixed(4); // Trim to 4 decimal places
+            formattedOutput.push(`${label}: ${trimmedScore}`); // Create "category: score" string
+          }
+        } else {
+          console.warn("Unexpected output structure from characterizer or missing data.");
+          // Handle the case where 'out' is not in the expected format
+          formattedOutput.push("Error: Could not process characterization results.");
+        }
+    
+        console.log("Formatted output for frontend:", formattedOutput);
+    
+        //needd to send to encryption here
 
-      const encryptedDocs = [];
-      for (const chat in convo){
-        const { input, response, timestamp } = convo[chat];
-
-        const dataToEncrypt = { input, response, timestamp };
-
+        const dataToEncrypt = { formattedOutput };
+        console.log(dataToEncrypt);
         const encryptedData = await CryptoHandler.encrypt(
-            dataToEncrypt,
-            walletKey
-          );
+          dataToEncrypt,
+          walletKey
+        );
+        console.log(encryptedData);
 
-        encryptedDocs.push({
-          walletKey: walletKey.toString(),
-          encryptedData: encryptedData.toString(),
-        });  
-      }
+        //now into db
+        const newData = {
+          walletKey,
+          encryptedData, 
+          timestamp: new Date(),
+        }
 
-      await chatCollection.insertMany(encryptedDocs);
-
-      //await decode(encryptedDocs.pop().encryptedData, walletKey);
-
-      res.json({
-        response: "Chat History saved successfully!" // Frontend expects response as a simple string
+        try {
+          const result = await chatCollection.insertOne(newData);
+          console.log("Document inserted successfully:", result.insertedId);
+          // Optional: Further processing or updates based on success
+        } catch (error) {
+          console.error("Error inserting document:", error);
+          // Handle the error appropriately, e.g., log it, send an alert, retry
+          // Possible error handling:
+          if (error.code === 11000) {
+            // Duplicate key error (e.g., walletKey already exists)
+            console.error("Duplicate key error. Wallet key already exists in database.");
+            // You might want to update the existing document instead of inserting a new one.
+          } else if (error.name === "MongoServerError") {
+            // Specific error handling for MongoDB ServerErrors
+            console.error("MongoDB Server Error:", error.message);
+            console.error("Error details:", error);  // Crucial for debugging
+          }
+          else {
+              console.error("Unexpected error:", error);
+          }
+        }
+        res.json({
+          characterizationOutput: formattedOutput // Send the formatted array back as 'characterizationOutput'
+        });
+      } catch (error) {
+        res.status(500).json({
+        error: 'Failed to analyze homunculus',
+        details: error instanceof Error ? error.message : String(error)
       });
-    } catch (error) {
-    res.status(500).json({
-      error: 'Failed to save encrypted chat',
-      details: error instanceof Error ? error.message : String(error)
-    });
+    }
+})
+
+app.post('/api/load-homunculus', async (req, res) => {
+  const walletKey = req.body.walletKey;
+  let homunculusProfile = [];
+  //need to retrieve fropm encryption here
+  console.log('looking up profile...')
+  const data = await chatCollection.aggregate([
+    {
+      $match: { walletKey: walletKey }
+    },
+    {
+      $sort: { timestamp: -1 } // Sort by timestamp descending
+    },
+    {
+      $limit: 1
+    }
+  ]).toArray();
+  
+  if (data.length === 0) {
+    console.log("No chat records found for this wallet.");
+    return; // Important: Exit if no documents are found
   }
+  
+  const dataJSON = JSON.stringify(data[0], null, 2);
+  try {
+    const parsedData = JSON.parse(dataJSON);
+    const toDecrypt = parsedData.encryptedData; // Correctly access encryptedData  
+    homunculusProfile = await CryptoHandler.decrypt(toDecrypt, walletKey);
+  
+    console.log(homunculusProfile);
+  } catch (error) {
+    console.error("Error parsing JSON:", error);
+  }
+  console.log(homunculusProfile);
+  const traitsString = homunculusProfile.formattedOutput.join(", ");
+  const prompt = `You are an AI agent with the following traits that will determine your disposition and character. each trait is on a scale from 0 to 1: ${traitsString}. From now on this is how you behave. You are also equipped with several tools that can be used to perform certain tasks. Respond to this prompt "Homunculus has been loaded." and list tools you have available that are able to be actually used`;
+  
+  console.log(prompt);
+
+  console.log("make homunculus");
+
+  const result = await agent.invoke(
+    { messages:
+      [new HumanMessage(prompt)] },
+    { configurable: {thread_id: 42 } },
+  );
+
+  console.log(result)
+
+  res.json({
+    characterizationOutput: homunculusProfile.formattedOutput
+  })
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -485,7 +526,7 @@ app.post('/api/chat', async (req, res) => {
 
     // Execute the chatapp
     console.log("invoking...");
-    const result = await chatApp.invoke(
+    const result = await agent.invoke(
       { messages:
         [new HumanMessage(message)] },
       { configurable: {thread_id: 42 } },

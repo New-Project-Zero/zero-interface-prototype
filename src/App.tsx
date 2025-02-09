@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { PhantomWalletButton } from './components/PhantomWalletButton'
 import { ChatComponent } from './components/ChatComponent'
 import { SidebarButtons } from './components/SidebarButtons'
+import { SidebarAgentSection } from './components/SidebarAgentSection'
 import LeafGenerator from './components/LeafGenerator'
 //import { AgentStatus } from './components/AgentStatus'
 
@@ -94,7 +95,7 @@ export default function App() {
       <main className="max-w-8xl mx-auto relative z-10">
   {walletKey && hasRequiredToken && (
     <div className="mx-auto flex w-full max-w-8xl h-[95vh]"> {/* w-full ensures it tries to take full width within max-w-8xl */}
-      {/* Sidebar */}
+      {/*Left Sidebar info section*/}
       <aside className="w-64 max-w-xs p-4 mr-2 bg-gray-800 rounded-lg info-section"> {/* max-w-xs limits sidebar width */}
         <SidebarButtons toolList={tools} />
       </aside>
@@ -103,6 +104,11 @@ export default function App() {
       <section className="flex-1 bg-gray-800 rounded-lg chat-section"> {/* flex-1 makes it grow */}
         <ChatComponent walletKey={walletKey} />
       </section>
+
+      {/* Right Sidebar Agent Section */}
+      <aside className="w-64 max-w-xs p-4 ml-2 bg-gray-800 rounded-lg agent-section"> {/* max-w-xs limits sidebar width */}
+        <SidebarAgentSection walletKey={walletKey}/>
+      </aside>
     </div>
   )}
 

@@ -28,79 +28,6 @@ export function ChatComponent({ walletKey }: ChatComponentProps) {
     scrollToBottom()
   }, [messages])
 
-  const saveChat = async () => {
-    try{
-      setIsLoading(true);
-      const response = await fetch("/api/save-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletKey }),
-      })
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.details || "Failed to get response")
-      }
-
-      const botMessage: Message = { role: "bot", content: data.response }
-      setMessages((prev) => [...prev, botMessage])
-
-    } catch (error) {
-      console.error("Error sending message:", error)
-      const errorMessage: Message = {
-        role: "error",
-        content: error instanceof Error ? error.message : "An unexpected error occurred saving chat",
-      }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  const loadChat = async () => {
-    try{
-      setIsLoading(true);
-      const response = await fetch("/api/load-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletKey }),
-      })
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.details || "Failed to get response")
-      }
-
-      //console.log("frontend data: ", data.conversation[1].input);
-      //this is an array. there is a better way to do this...
-      for (let i = 1; i < data.conversation.length; i++) {
-        const chat = data.conversation[i];
-      
-        if (chat && chat.input && chat.response) { // Check for undefined/null values
-          const userMessage: Message = { role: "user", content: chat.input };
-          setMessages((prev) => [...prev, userMessage]);
-          const botMessage: Message = { role: "bot", content: chat.response };
-          setMessages((prev) => [...prev, botMessage]);
-        } else {
-          console.error("Invalid chat object:", chat);
-          // Optionally, handle the invalid chat object (e.g., log it, skip it, or set a default message).
-          // Consider logging the index or key for better debugging.
-        }
-      }
-    } catch (error) {
-      console.error("Error sending message:", error)
-      const errorMessage: Message = {
-        role: "error",
-        content: error instanceof Error ? error.message : "An unexpected error occurred saving chat",
-      }
-      //setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
 
@@ -161,7 +88,7 @@ useEffect(() => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: "You are a tool equipped llm meant to perform specific tasks. As the conversation carries on the you will adapt to the user's wishes and develope a personality unique to that user. Start with the greeting and do not hallucinate tools that you do not have. 'Hello I am homunculus. I have the following tools equipped: bulleted list of tools formatted nicely in readbale format with each tool on a new line lik this: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools and the tool name formatted nicely with whitespace and no underscores asterisks etc.",
+          message: "You are a tool equipped llm meant to perform specific tasks. Start with the greeting and do not hallucinate tools that you do not have. 'Hello I am homunculus. I have the following tools equipped: bulleted list of tools formatted nicely in readbale format with each tool on a new line lik this: \n -tool 1 \n -tool 2 \n etc.' with a description of the tools and the tool name formatted nicely with whitespace and no underscores asterisks etc.",
           walletKey 
         })
       })
